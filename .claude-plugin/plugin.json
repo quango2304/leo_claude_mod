@@ -1,0 +1,10 @@
+{
+  "name": "leo-mods",
+  "version": "0.1.0",
+  "description": "Leo's Claude Code mods: session cost in the footer, and more to come",
+  "author": { "name": "quango2304", "url": "https://github.com/quango2304" },
+  "homepage": "https://github.com/quango2304/leo_claude_mod",
+  "repository": "https://github.com/quango2304/leo_claude_mod",
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}

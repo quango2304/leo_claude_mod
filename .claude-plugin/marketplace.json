@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "quango2304",
+  "description": "quango2304's Claude Code plugins",
+  "owner": { "name": "quango2304", "url": "https://github.com/quango2304" },
+  "plugins": [
+    {
+      "name": "leo-mods",
+      "description": "Leo's Claude Code mods: session cost in the footer, and more to come",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}
