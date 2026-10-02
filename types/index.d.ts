@@ -14,7 +14,6 @@ declare module 'claude-code' {
       limits: Limit[]
       runningAgents: number
       activeMs: number
-      outputSpeed: number | null
       cacheAt: number | null
       cacheTtlMs: number | null
       cacheLeftMs: number | null

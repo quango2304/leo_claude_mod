@@ -4,14 +4,14 @@ Leo's personal mods for Claude Code (terminal and the desktop app's Code tab), p
 
 ## Features
 
-One clean line of live session info. In the desktop app it sits above the prompt: the cost and output speed over the active time at the left, and a bar for each meter at the right, its name over it in its color and the number inside. Here it is before the first response, mid-session and near the limits, in the dark and light themes:
+One clean line of live session info. In the desktop app it sits above the prompt: the cost over the active time at the left, and a bar for each meter at the right, its name over it in its color and the number inside. Here it is before the first response, mid-session and near the limits, in the dark and light themes:
 
 ![The usage line in the desktop app](docs/preview.png)
 
 In the terminal it's one footer label, with text bars:
 
 ```
-active 12m · 2 agents · 62 tok/s · cache ▰▰▰▰▱ 42m · context ▰▰▱▱▱ 42% · 5h ▰▱▱▱▱ 23% 1h20m · week ▱▱▱▱▱ 12% Sat 9:00 PM · $0.13
+active 12m · 2 agents · cache ▰▰▰▰▱ 42m · context ▰▰▱▱▱ 42% · 5h ▰▱▱▱▱ 23% 1h20m · week ▱▱▱▱▱ 12% Sat 9:00 PM · $0.13
 ```
 
 The desktop app doesn't draw a mod's footer labels, so there the line goes above the prompt instead.
@@ -23,7 +23,6 @@ The desktop app doesn't draw a mod's footer labels, so there the line goes above
 | `cache` | How long the prompt cache stays warm: a bar that drains (green, then amber under 40% left, red under 15%) and the minutes left, or a red `cold` once it expired. | `hooks/features/usage.ts` |
 | `context` | How full the context window is. Near 100%, the conversation gets compacted. | `hooks/features/usage.ts` |
 | `5h` / `week` | How much of your subscription's 5-hour and weekly usage limits you've used, and when each resets: the time left for the 5-hour window (`1h20m`, ticks every minute), the day and local time for the weekly one (`Sat 9:00 PM`). Hidden off a subscription (API key). | `hooks/features/usage.ts` |
-| `62 tok/s` | How fast the model writes: the main conversation's output tokens per second over the current turn, timed from each response's first streamed piece to its last (so the wait before it starts doesn't count). Updates after each model request and stays between turns; `-- tok/s` until the first one. | `hooks/features/speed.ts` |
 | `$0.13` | The session's total cost, in dollars and cents: green under $50, amber under $100, red from $100. | `hooks/features/usage.ts` |
 
 Each bar has its own color (context blue, 5h violet, week teal), then turns amber from 50% and red from 80% (`hooks/meters.ts`).
@@ -101,8 +100,7 @@ leo_claude_mod/
 │   ├── meters.ts                draws a percentage as a bar (SVG on desktop, ▰▱ in the terminal)
 │   └── features/
 │       ├── usage.ts             cache countdown, context %, usage limits and resets, cost, alerts
-│       ├── activity.ts          active time, running subagents
-│       └── speed.ts             output tokens per second
+│       └── activity.ts          active time, running subagents
 ├── docs/preview.png             the picture above, drawn by scripts/preview.ts
 ├── scripts/preview.ts           draws docs/preview.png from the plugin's own code (bun scripts/preview.ts)
 ├── tests/                       plugin tests (claude plugin test .)

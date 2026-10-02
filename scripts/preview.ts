@@ -22,7 +22,6 @@ plugin({
 })
 
 const { activeLabel, agentsLabel } = await import('../hooks/features/activity')
-const { speedLabel } = await import('../hooks/features/speed')
 const { cacheMeter, costColor, costLabel, usageMeters } = await import('../hooks/features/usage')
 const { meterAlt, meterSize, PLACEHOLDER_METERS, summarySize, summaryText, svgMeter, svgSummary } = await import('../hooks/meters')
 type Meter = import('../hooks/meters').Meter
@@ -37,15 +36,14 @@ const HOUR = 60 * MINUTE
 const now = new Date(2026, 9, 2, 13, 0).getTime()
 const at = (date: Date) => date.toISOString()
 
-type Line = { cost: number; speed: number | null; activeMs: number; agents: number; meters: Meter[] }
+type Line = { cost: number; activeMs: number; agents: number; meters: Meter[] }
 
 const LINES: Line[] = [
   // A new session, before its first response.
-  { cost: 0, speed: null, activeMs: 0, agents: 0, meters: PLACEHOLDER_METERS },
+  { cost: 0, activeMs: 0, agents: 0, meters: PLACEHOLDER_METERS },
   // Mid-session.
   {
     cost: 0.13,
-    speed: 62,
     activeMs: 12 * MINUTE,
     agents: 0,
     meters: [
@@ -59,7 +57,6 @@ const LINES: Line[] = [
   // Near the limits, the cache gone cold, subagents running.
   {
     cost: 64.2,
-    speed: 48,
     activeMs: 75 * MINUTE,
     agents: 2,
     meters: [
@@ -88,7 +85,7 @@ function img(source: string, alt: string, size: { width: number; height: number 
 // The band as register.tsx lays it out: the summary at the left, the meters
 // at the right.
 function band(line: Line, background: string) {
-  const summary = { cost: costLabel(line.cost), costColor: costColor(line.cost), speed: speedLabel(line.speed), active: activeLabel(line.activeMs), agents: agentsLabel(line.agents) }
+  const summary = { cost: costLabel(line.cost), costColor: costColor(line.cost), active: activeLabel(line.activeMs), agents: agentsLabel(line.agents) }
   const meters = line.meters.map(m => img(svgMeter(m), meterAlt(m), meterSize(m))).join('')
 
   return `<div class="band" style="background:${background}">${img(svgSummary(summary), summaryText(summary), summarySize(summary))}<div class="meters">${meters}</div></div>`
