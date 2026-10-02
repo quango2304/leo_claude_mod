@@ -47,7 +47,7 @@ test('output speed counts streaming time across a turn', { timeoutMs: 20_000 }, 
   async function speedShown() {
     const ui = await $.ui.mount(DESKTOP)
 
-    return (await ui.findAll({ type: 'Svg' }))[0]?.props.alt
+    return (await ui.findAll({ type: 'Svg' }))[1]?.props.alt
   }
 
   // 50 tokens over 1 s.

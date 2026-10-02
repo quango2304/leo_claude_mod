@@ -1,6 +1,8 @@
 import { atom, update } from 'claude-code'
 import type { EngineInterface, On, Timer } from 'claude-code'
 
+import { noteTurnEnd } from './mascot'
+
 // What the session is doing: active time (the main loop's turn durations,
 // summed) and how many subagents are running. One feature, because both
 // need turn.complete and the engine takes one hook per event per plugin.
@@ -58,6 +60,7 @@ export function registerActivity(on: On) {
       await update($, activeMs, total => total + ms)
     }
 
+    noteTurnEnd(await $.clock.now(), e)
     await refreshAgents($)
 
     return result

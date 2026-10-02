@@ -1,3 +1,5 @@
+export type Mood = 'idle' | 'typing' | 'working' | 'done' | 'error' | 'sleeping'
+
 export type Usd = number | null
 
 export type Percent = number | null
@@ -19,6 +21,8 @@ declare module 'claude-code' {
       cacheLeftMs: number | null
       cacheColdToasted: number | null
       nowMs: number
+      mascotMood: Mood
+      mascotFrame: number
     }
   }
 }

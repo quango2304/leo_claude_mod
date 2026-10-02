@@ -1,10 +1,12 @@
 import { atom, read } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Limit, Percent, Usd } from '../types'
+import type { Limit, Mood, Percent, Usd } from '../types'
 import { activeLabel, agentsLabel, registerActivity } from './features/activity'
+import { registerMascot } from './features/mascot'
 import { registerSpeed, speedLabel } from './features/speed'
 import { cacheMeter, costColor, costLabel, registerUsage, usageMeters } from './features/usage'
+import { MASCOT_HEIGHT, MASCOT_WIDTH, MOOD_LABEL, svgMascot } from './mascot'
 import { type Meter, meterAlt, meterSize, meterText, PLACEHOLDER_METERS, type Summary, summarySize, summaryText, svgMeter, svgSummary, textMeter } from './meters'
 
 // The line reads each feature's value through its own atom on the same
@@ -17,6 +19,8 @@ const activeMs = atom({ plugin: 'leo-mods', key: 'activeMs' } as const, 0)
 const outputSpeed = atom({ plugin: 'leo-mods', key: 'outputSpeed' } as const, null as number | null)
 const cacheLeftMs = atom({ plugin: 'leo-mods', key: 'cacheLeftMs' } as const, null as number | null)
 const cacheTtlMs = atom({ plugin: 'leo-mods', key: 'cacheTtlMs' } as const, null as number | null)
+const mascotMood = atom({ plugin: 'leo-mods', key: 'mascotMood' } as const, 'idle' as Mood)
+const mascotFrame = atom({ plugin: 'leo-mods', key: 'mascotFrame' } as const, 0)
 const nowMs = atom({ plugin: 'leo-mods', key: 'nowMs' } as const, 0)
 
 // What the line shows: the summary (cost, speed, active time, agents) and
@@ -49,6 +53,7 @@ export const register: Register = on => {
   registerUsage(on)
   registerActivity(on)
   registerSpeed(on)
+  registerMascot(on)
 
   // The terminal draws a mod's footer labels, so there the line is one label:
   // "active 12m · 2 agents · 62 tok/s · context ▰▰▱▱▱ 42% · 5h ▰▱▱▱▱ 23% · $0.13".
@@ -72,8 +77,8 @@ export const register: Register = on => {
   })
 
   // The desktop app asks for footer labels but doesn't draw them, so there
-  // the line goes above the prompt, all SVG (see meters.ts): the cost over the
-  // active time and agents at the left, the meters at the right.
+  // the line goes above the prompt, all SVG (see meters.ts): the dog, then the cost
+  // over the active time and agents, at the left, the meters at the right.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const line = await readLine($)
 
@@ -83,11 +88,16 @@ export const register: Register = on => {
 
     const { Box, Svg } = $.ui.resolve(e)
     const { summary } = line
+    const mood = await read($, mascotMood)
+    const frame = await read($, mascotFrame)
     const size = summarySize(summary)
 
     return (
       <Box justifyContent="space-between" alignItems="center" gap={3}>
-        <Svg source={svgSummary(summary)} alt={summaryText(summary)} width={size.width} height={size.height} />
+        <Box alignItems="center" gap={2}>
+          <Svg source={svgMascot(mood, frame)} alt={`Mascot, ${MOOD_LABEL[mood]}`} width={MASCOT_WIDTH} height={MASCOT_HEIGHT} />
+          <Svg source={svgSummary(summary)} alt={summaryText(summary)} width={size.width} height={size.height} />
+        </Box>
         <Box alignItems="center" gap={2} flexShrink={0}>
           {line.meters.map(m => (
             <Svg key={m.name} source={svgMeter(m)} alt={meterAlt(m)} {...meterSize(m)} />

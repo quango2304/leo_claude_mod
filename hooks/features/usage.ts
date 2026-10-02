@@ -3,6 +3,7 @@ import type { EngineInterface, On, SessionUsage, Timer } from 'claude-code'
 
 import type { Limit, Percent, Usd } from '../../types'
 import type { Meter } from '../meters'
+import { noteTurnStart } from './mascot'
 
 // Everything $.session.usage() reports (context fill, rate-limit windows,
 // cost) and the prompt cache's countdown, which runs off the same measurements.
@@ -256,6 +257,7 @@ export function registerUsage(on: On) {
 
   on('turn.start', async ($, e, next) => {
     isTurnRunning = true
+    noteTurnStart(await $.clock.now())
     await tickCache($)
 
     return next(e)
