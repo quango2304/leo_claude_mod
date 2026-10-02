@@ -1,7 +1,9 @@
 import { expect, test } from 'claude-code/testing'
 
-// Before any reading the desktop band keeps its shape: empty bars, zeroed
-// numbers and a $0.00 cost.
+import { meterSize } from '../hooks/meters'
+
+// Before any reading the desktop band keeps its shape: the same meters at the
+// same size as live ones, with empty bars, zeroed numbers and a $0.00 cost.
 test('a fresh session shows placeholders on the desktop', async $ => {
   const ui = await $.ui.mount({
     plugin: 'leo-mods',
@@ -10,11 +12,8 @@ test('a fresh session shows placeholders on the desktop', async $ => {
     props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 120, scroll: { offset: 0, bodyRows: 10 }, view: {} },
   })
 
-  expect(await ui.findAll({ type: 'Svg' })).toHaveLength(4)
-  expect(await ui.findAll({ type: 'Text', text: '00%' })).toHaveLength(3)
-  expect(await ui.find({ type: 'Text', text: '00m' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'active 0m' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '0h00m' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '0d00h' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '$0.00' })).toBeDefined()
+  const bars = await ui.findAll({ type: 'Svg' })
+  expect(bars.map(b => b.props.alt)).toEqual(['$0.00 · active 0m', 'cache 00m', 'context 00%', '5h 00% 0h00m', 'week 00% --- -:-- --'])
+  expect(bars.slice(1).every(b => b.props.width === meterSize.width && b.props.height === meterSize.height)).toBe(true)
+  expect(bars[0]?.props.height).toBe(meterSize.height)
 })

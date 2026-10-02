@@ -30,8 +30,9 @@ const DAY = 86_400_000
 const HOUR = 3_600_000
 const FIVE_MINUTES = 300_000
 
-const SHORT: Record<string, string> = { five_hour: '5h', seven_day: '7d', spend_limit: 'spend' }
-const LONG: Record<string, string> = { five_hour: '5-hour', seven_day: '7-day', spend_limit: 'Spend' }
+const SHORT: Record<string, string> = { five_hour: '5h', seven_day: 'week', spend_limit: 'spend' }
+const LONG: Record<string, string> = { five_hour: '5-hour', seven_day: 'Weekly', spend_limit: 'Spend' }
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 let cacheTimer: Timer | null = null
 let clockTimer: Timer | null = null
@@ -49,17 +50,26 @@ export function resetLabel(ms: number) {
   return `${Math.floor(left / HOUR)}h${String(Math.floor((left % HOUR) / MINUTE)).padStart(2, '0')}m`
 }
 
+// When a window resets, in local time: "Sat 9:00 PM".
+export function resetTimeLabel(at: number) {
+  const date = new Date(at)
+  const hours = date.getHours()
+
+  return `${WEEKDAYS[date.getDay()]} ${hours % 12 || 12}:${String(date.getMinutes()).padStart(2, '0')} ${hours < 12 ? 'AM' : 'PM'}`
+}
+
 // The percentages to draw as meters: context fill, then each rate-limit
-// window (only on a subscription) with its time until reset. Each is left
-// out until it has a reading.
+// window (only on a subscription) with when it resets: the time left for the
+// 5-hour window, the day and time for the weekly one. Each is left out until
+// it has a reading.
 export function usageMeters(context: Percent, windows: Limit[], now: number): Meter[] {
-  const meters: Meter[] = context === null ? [] : [{ name: 'ctx', percent: context }]
+  const meters: Meter[] = context === null ? [] : [{ name: 'context', percent: context }]
 
   return [
     ...meters,
     ...windows.map(w => {
       const resetsAt = w.resetsAt === undefined ? NaN : Date.parse(w.resetsAt)
-      const detail = Number.isNaN(resetsAt) ? undefined : resetLabel(resetsAt - now)
+      const detail = Number.isNaN(resetsAt) ? undefined : w.kind === 'seven_day' ? resetTimeLabel(resetsAt) : resetLabel(resetsAt - now)
 
       return { name: SHORT[w.kind] ?? w.kind, percent: w.percentUsed, detail }
     }),
@@ -85,7 +95,7 @@ export function cacheMeter(leftMs: number | null, ttlMs: number | null): Meter |
   }
 
   if (leftMs === 0) {
-    return { name: 'cache', percent: 0, text: 'cold · new session?', color: '#f87171', isAlert: true }
+    return { name: 'cache', percent: 0, text: 'cold · new session?', color: '#f87171' }
   }
 
   const fraction = leftMs / ttlMs
@@ -109,11 +119,16 @@ export function costLabel(total: number) {
   return `$${total.toFixed(2)}`
 }
 
-function resetsIn(resetsAt: string | undefined, now: number) {
-  const ms = resetsAt === undefined ? NaN : Date.parse(resetsAt) - now
+function resetsIn(kind: string, resetsAt: string | undefined, now: number) {
+  const at = resetsAt === undefined ? NaN : Date.parse(resetsAt)
+  const ms = at - now
 
   if (!(ms > 0)) {
     return ''
+  }
+
+  if (kind === 'seven_day') {
+    return `, resets ${resetTimeLabel(at)}`
   }
 
   const minutes = Math.round(ms / 60_000)
@@ -130,7 +145,7 @@ async function alertIfHigh($: EngineInterface, windows: Limit[]) {
   const fresh = windows.filter(w => w.percentUsed >= ALERT_AT && !alerted.includes(`${w.kind}@${w.resetsAt}`))
 
   for (const w of fresh) {
-    $.ui.toast(`${LONG[w.kind] ?? w.kind} limit at ${Math.round(w.percentUsed)}%${resetsIn(w.resetsAt, now)}`, { timeoutMs: TOAST_MS })
+    $.ui.toast(`${LONG[w.kind] ?? w.kind} limit at ${Math.round(w.percentUsed)}%${resetsIn(w.kind, w.resetsAt, now)}`, { timeoutMs: TOAST_MS })
   }
 
   if (fresh.length > 0) {

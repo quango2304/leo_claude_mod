@@ -1,0 +1,9 @@
+#!/bin/sh
+# Keeps docs/preview.png, the README's picture of the desktop line, in step
+# with the drawing code: when a commit touches it, redraw and stage the image.
+# Enable once per clone: git config core.hooksPath .githooks
+
+if git diff --cached --name-only | grep -qE '^(hooks/|scripts/preview\.ts$)'; then
+  bun scripts/preview.ts || exit 1
+  git add docs/preview.png
+fi
