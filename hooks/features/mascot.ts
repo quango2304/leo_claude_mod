@@ -17,7 +17,6 @@ const mascotFrame = atom({ plugin: 'leo-mods', key: 'mascotFrame' } as const, 0)
 const TICK_MS = 200
 const TYPING_MS = 500
 const DONE_MS = 3000
-const HOLD_MS = 2000
 
 type Facts = { isWorking: boolean; keyAt: number; doneAt: number }
 
@@ -36,16 +35,9 @@ export function moodAt(facts: Facts, now: number): Mood {
   return now - facts.doneAt < DONE_MS ? 'done' : 'idle'
 }
 
-// Every mood change swaps the picture, so a mood stays at least HOLD_MS before
-// another replaces it. Typing cuts in at once, and ends at once.
-export function holdMood(current: Mood, next: Mood, shownAt: number, now: number): Mood {
-  return next === 'typing' || current === 'typing' || now - shownAt >= HOLD_MS ? next : current
-}
-
 const NEVER = -Infinity
 const facts: Facts = { isWorking: false, keyAt: NEVER, doneAt: NEVER }
 let current: Mood = 'idle'
-let shownAt = 0
 let frame = 0
 let ticks = 0
 let timer: Timer | null = null
@@ -71,11 +63,10 @@ async function pollDraft($: EngineInterface) {
 // only when the picture does.
 async function settle($: EngineInterface) {
   const now = await $.clock.now()
-  const next = holdMood(current, moodAt(facts, now), shownAt, now)
+  const next = moodAt(facts, now)
 
   if (next !== current) {
     current = next
-    shownAt = now
     ticks = 0
     await update($, mascotMood, () => next)
   } else {
