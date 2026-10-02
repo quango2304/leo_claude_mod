@@ -11,20 +11,16 @@ import { noteTurnStart } from './mascot'
 const contextPercent = atom({ plugin: 'leo-mods', key: 'contextPercent' } as const, null as Percent)
 const limits = atom({ plugin: 'leo-mods', key: 'limits' } as const, [] as Limit[])
 const costUsd = atom({ plugin: 'leo-mods', key: 'costUsd' } as const, null as Usd)
-const limitAlerted = atom({ plugin: 'leo-mods', key: 'limitAlerted' } as const, [] as string[])
 const cacheAt = atom({ plugin: 'leo-mods', key: 'cacheAt' } as const, null as number | null)
 const cacheTtlMs = atom({ plugin: 'leo-mods', key: 'cacheTtlMs' } as const, null as number | null)
 const cacheLeftMs = atom({ plugin: 'leo-mods', key: 'cacheLeftMs' } as const, null as number | null)
-const cacheColdToasted = atom({ plugin: 'leo-mods', key: 'cacheColdToasted' } as const, null as number | null)
 const nowMs = atom({ plugin: 'leo-mods', key: 'nowMs' } as const, 0)
 
 // The cache timestamp also goes to $.store, per session, so a restarted or
 // resumed session still knows when its cache was last refreshed.
 const CACHE_STORE_KEY = 'cacheBySession'
 const CACHE_STORE_MAX = 50
-const TOAST_MS = 30_000
 
-const ALERT_AT = 80
 const CACHE_TICK_MS = 15_000
 const MINUTE = 60_000
 const DAY = 86_400_000
@@ -32,7 +28,6 @@ const HOUR = 3_600_000
 const FIVE_MINUTES = 300_000
 
 const SHORT: Record<string, string> = { five_hour: '5h', seven_day: 'week', spend_limit: 'spend' }
-const LONG: Record<string, string> = { five_hour: '5-hour', seven_day: 'Weekly', spend_limit: 'Spend' }
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 let cacheTimer: Timer | null = null
@@ -120,40 +115,6 @@ export function costLabel(total: number) {
   return `$${total.toFixed(2)}`
 }
 
-function resetsIn(kind: string, resetsAt: string | undefined, now: number) {
-  const at = resetsAt === undefined ? NaN : Date.parse(resetsAt)
-  const ms = at - now
-
-  if (!(ms > 0)) {
-    return ''
-  }
-
-  if (kind === 'seven_day') {
-    return `, resets ${resetTimeLabel(at)}`
-  }
-
-  const minutes = Math.round(ms / 60_000)
-  const days = Math.floor(minutes / 1440)
-  const hours = Math.floor((minutes % 1440) / 60)
-
-  return days > 0 ? `, resets in ${days}d ${hours}h` : `, resets in ${hours}h ${minutes % 60}m`
-}
-
-// Toasts once per window (until it resets) when its usage passes ALERT_AT.
-async function alertIfHigh($: EngineInterface, windows: Limit[]) {
-  const alerted = await read($, limitAlerted)
-  const now = await $.clock.now()
-  const fresh = windows.filter(w => w.percentUsed >= ALERT_AT && !alerted.includes(`${w.kind}@${w.resetsAt}`))
-
-  for (const w of fresh) {
-    $.ui.toast(`${LONG[w.kind] ?? w.kind} limit at ${Math.round(w.percentUsed)}%${resetsIn(w.kind, w.resetsAt, now)}`, { timeoutMs: TOAST_MS })
-  }
-
-  if (fresh.length > 0) {
-    await update($, limitAlerted, keys => [...keys, ...fresh.map(w => `${w.kind}@${w.resetsAt}`)].slice(-10))
-  }
-}
-
 // The main conversation's cache TTL, decided the way Claude Code decides it:
 // the env var, then the promptCacheTtl setting, then 1 hour on a subscription
 // within its limits and 5 minutes otherwise. Null with caching off.
@@ -183,8 +144,7 @@ async function cacheTtl($: EngineInterface, windows: Limit[]) {
   return isSubscription ? HOUR : FIVE_MINUTES
 }
 
-// Recomputes the time left, toasting once when the cache goes cold, and keeps
-// a timer running while it's warm.
+// Recomputes the time left, and keeps a timer running while it's warm.
 async function tickCache($: EngineInterface) {
   const at = await read($, cacheAt)
   const ttl = await read($, cacheTtlMs)
@@ -201,11 +161,6 @@ async function tickCache($: EngineInterface) {
   } else if (left === 0) {
     cacheTimer?.cancel()
     cacheTimer = null
-
-    if ((await read($, cacheColdToasted)) !== at) {
-      $.ui.toast('Prompt cache expired: your next message re-reads the whole conversation at full price. For a new task, start a new session.', { timeoutMs: TOAST_MS })
-      await update($, cacheColdToasted, () => at)
-    }
   }
 }
 
@@ -241,7 +196,6 @@ async function store($: EngineInterface, usage: Omit<SessionUsage, 'startedAt'>)
   await update($, contextPercent, () => percent)
   await update($, limits, () => windows)
   await update($, costUsd, () => total)
-  await alertIfHigh($, windows)
 }
 
 export function registerUsage(on: On) {

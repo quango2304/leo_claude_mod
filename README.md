@@ -20,13 +20,13 @@ The desktop app doesn't draw a mod's footer labels, so there the line goes above
 | --- | --- | --- |
 | `active 12m` | Time Claude has spent working this session: the main conversation's turn durations added up (not time since the session opened), in whole minutes. Counted from when the plugin loads, which is the session start in a new session. | `hooks/features/activity.ts` |
 | `2 agents` | Subagents running right now; hidden when none are. | `hooks/features/activity.ts` |
-| `cache` | How long the prompt cache stays warm: a bar that drains (green, then amber under 40% left, red under 15%) and the minutes left, or a red `cold` once it expired. A toast also tells you when it expires: your next message then re-reads the whole conversation at full price, so for a new task a new session is cheaper. | `hooks/features/usage.ts` |
+| `cache` | How long the prompt cache stays warm: a bar that drains (green, then amber under 40% left, red under 15%) and the minutes left, or a red `cold` once it expired. | `hooks/features/usage.ts` |
 | `context` | How full the context window is. Near 100%, the conversation gets compacted. | `hooks/features/usage.ts` |
 | `5h` / `week` | How much of your subscription's 5-hour and weekly usage limits you've used, and when each resets: the time left for the 5-hour window (`1h20m`, ticks every minute), the day and local time for the weekly one (`Sat 9:00 PM`). Hidden off a subscription (API key). | `hooks/features/usage.ts` |
 | `62 tok/s` | How fast the model writes: the main conversation's output tokens per second over the current turn, timed from each response's first streamed piece to its last (so the wait before it starts doesn't count). Updates after each model request and stays between turns; `-- tok/s` until the first one. | `hooks/features/speed.ts` |
 | `$0.13` | The session's total cost, in dollars and cents: green under $50, amber under $100, red from $100. | `hooks/features/usage.ts` |
 
-Each bar has its own color (context blue, 5h violet, week teal), then turns amber from 50% and red from 80% (`hooks/meters.ts`). When a usage limit passes **80%**, a toast pops up (for 30 seconds) once per window, e.g. "5-hour limit at 82%, resets in 1h 20m" or "Weekly limit at 85%, resets Sat 9:00 PM".
+Each bar has its own color (context blue, 5h violet, week teal), then turns amber from 50% and red from 80% (`hooks/meters.ts`).
 
 Usage numbers are read when the session starts and updated after each turn; the 5-hour countdown ticks every minute. Numbers keep a fixed width (`05%`, `07m`, `1h20m`, `$0.00`) so the line doesn't shift. Until the first response, a new session shows the line with empty bars and zeros (`00m`, `00%`, `0h00m`, `--- -:-- --`, `$0.00`, `active 0m`).
 
