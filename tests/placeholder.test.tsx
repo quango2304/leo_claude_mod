@@ -14,5 +14,7 @@ test('a fresh session shows placeholders on the desktop', async $ => {
   expect(await ui.findAll({ type: 'Text', text: '00%' })).toHaveLength(3)
   expect(await ui.find({ type: 'Text', text: '00m' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: 'active 0m' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '0h00m' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '0d00h' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '$0.00' })).toBeDefined()
 })

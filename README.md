@@ -7,13 +7,13 @@ Leo's personal mods for Claude Code (terminal and the desktop app's Code tab), p
 One clean line of live session info. In the desktop app it sits above the prompt, with activity at the left and small bars at the right:
 
 ```
-active 12m · 2 agents     cache ▬▬▬▬▭ 42m   ctx ▬▬▬▭▭ 42%   5h ▬▭▭▭▭ 23%   7d ▬▭▭▭▭ 12%   $0.13
+active 12m · 2 agents     cache ▬▬▬▬▭ 42m   ctx ▬▬▬▭▭ 42%   5h ▬▭▭▭▭ 23% 1h20m   7d ▬▭▭▭▭ 12% 3d04h   $0.13
 ```
 
 In the terminal it's one footer label, with text bars:
 
 ```
-active 12m · 2 agents · cache ▰▰▰▰▱ 42m · ctx ▰▰▱▱▱ 42% · 5h ▰▱▱▱▱ 23% · 7d ▱▱▱▱▱ 12% · $0.13
+active 12m · 2 agents · cache ▰▰▰▰▱ 42m · ctx ▰▰▱▱▱ 42% · 5h ▰▱▱▱▱ 23% 1h20m · 7d ▱▱▱▱▱ 12% 3d04h · $0.13
 ```
 
 (See [Where a mod can draw](#where-a-mod-can-draw) for why the two differ.)
@@ -24,7 +24,7 @@ active 12m · 2 agents · cache ▰▰▰▰▱ 42m · ctx ▰▰▱▱▱ 42% �
 | `2 agents` | Subagents running right now; hidden when none are. | `hooks/features/activity.ts` |
 | `cache` | How long the prompt cache stays warm: a bar that drains (green, then amber under 40% left, red under 15%) and the minutes left, or a red `cold · new session?` once it expired. A toast also tells you when it expires: your next message then re-reads the whole conversation at full price, so for a new task a new session is cheaper. | `hooks/features/usage.ts` |
 | `ctx` | How full the context window is. Near 100%, the conversation gets compacted. | `hooks/features/usage.ts` |
-| `5h` / `7d` | How much of your subscription's 5-hour and 7-day usage limits you've used. Hidden off a subscription (API key). | `hooks/features/usage.ts` |
+| `5h` / `7d` | How much of your subscription's 5-hour and 7-day usage limits you've used, and how long until each resets (`1h20m`, `3d04h`; ticks every minute). Hidden off a subscription (API key). | `hooks/features/usage.ts` |
 | `$0.13` | The session's total cost, in dollars and cents: green under $50, amber under $100, red from $100. | `hooks/features/usage.ts` |
 
 Each bar has its own color (ctx blue, 5h violet, 7d teal), then turns amber from 50% and red from 80% (`hooks/meters.ts`). When a usage limit passes **80%**, a toast pops up (for 30 seconds) once per window, e.g. "5-hour limit at 82%, resets in 1h 20m".

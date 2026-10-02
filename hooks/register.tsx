@@ -15,6 +15,7 @@ const runningAgents = atom({ plugin: 'leo-mods', key: 'runningAgents' } as const
 const activeMs = atom({ plugin: 'leo-mods', key: 'activeMs' } as const, 0)
 const cacheLeftMs = atom({ plugin: 'leo-mods', key: 'cacheLeftMs' } as const, null as number | null)
 const cacheTtlMs = atom({ plugin: 'leo-mods', key: 'cacheTtlMs' } as const, null as number | null)
+const nowMs = atom({ plugin: 'leo-mods', key: 'nowMs' } as const, 0)
 
 // What the line shows: activity (active time, agents) on the left; meters
 // (cache, ctx, 5h, 7d) and plain labels (cost) on the right.
@@ -22,7 +23,7 @@ async function readLine($: EngineInterface) {
   const active = await read($, activeMs)
   const activity = [activeLabel(active), agentsLabel(await read($, runningAgents))].filter(l => l !== null)
   const cache = cacheMeter(await read($, cacheLeftMs), await read($, cacheTtlMs))
-  const meters = [...(cache === null ? [] : [cache]), ...usageMeters(await read($, contextPercent), await read($, limits))]
+  const meters = [...(cache === null ? [] : [cache]), ...usageMeters(await read($, contextPercent), await read($, limits), await read($, nowMs))]
   const cost = await read($, costUsd)
 
   // Before the first response there's no context reading and the cost is $0
@@ -41,8 +42,8 @@ async function readLine($: EngineInterface) {
 const PLACEHOLDER_METERS: Meter[] = [
   { name: 'cache', percent: 0, text: '00m', color: '#34d399' },
   { name: 'ctx', percent: 0 },
-  { name: '5h', percent: 0 },
-  { name: '7d', percent: 0 },
+  { name: '5h', percent: 0, detail: '0h00m' },
+  { name: '7d', percent: 0, detail: '0d00h' },
 ]
 
 // To add a feature: write hooks/features/<name>.ts exporting register<Name>(on)
@@ -62,7 +63,7 @@ export const register: Register = on => {
 
     const text = [
       ...line.activity,
-      ...line.meters.map(m => `${m.name} ${textMeter(m.percent)} ${meterText(m)}`),
+      ...line.meters.map(m => [m.name, textMeter(m.percent), meterText(m), m.detail].filter(Boolean).join(' ')),
       ...line.labels.map(l => l.text),
     ].join(' · ')
 
@@ -95,6 +96,7 @@ export const register: Register = on => {
                 height={meterSize.height}
               />
               {m.isAlert ? <Text color={m.color}>{meterText(m)}</Text> : <Text dimColor>{meterText(m)}</Text>}
+              {m.detail === undefined ? null : <Text dimColor>{m.detail}</Text>}
             </Box>
           ))}
           {line.labels.map(l => (

@@ -15,6 +15,7 @@ const cacheAt = atom({ plugin: 'leo-mods', key: 'cacheAt' } as const, null as nu
 const cacheTtlMs = atom({ plugin: 'leo-mods', key: 'cacheTtlMs' } as const, null as number | null)
 const cacheLeftMs = atom({ plugin: 'leo-mods', key: 'cacheLeftMs' } as const, null as number | null)
 const cacheColdToasted = atom({ plugin: 'leo-mods', key: 'cacheColdToasted' } as const, null as number | null)
+const nowMs = atom({ plugin: 'leo-mods', key: 'nowMs' } as const, 0)
 
 // The cache timestamp also goes to $.store, per session, so a restarted or
 // resumed session still knows when its cache was last refreshed.
@@ -24,6 +25,8 @@ const TOAST_MS = 30_000
 
 const ALERT_AT = 80
 const CACHE_TICK_MS = 15_000
+const MINUTE = 60_000
+const DAY = 86_400_000
 const HOUR = 3_600_000
 const FIVE_MINUTES = 300_000
 
@@ -31,14 +34,46 @@ const SHORT: Record<string, string> = { five_hour: '5h', seven_day: '7d', spend_
 const LONG: Record<string, string> = { five_hour: '5-hour', seven_day: '7-day', spend_limit: 'Spend' }
 
 let cacheTimer: Timer | null = null
+let clockTimer: Timer | null = null
 let isTurnRunning = false
 
+// Time until a window resets, in a fixed width: "1h20m" under a day, "3d04h"
+// from a day; "0h00m" once it passed.
+export function resetLabel(ms: number) {
+  if (ms >= DAY) {
+    return `${Math.floor(ms / DAY)}d${String(Math.floor((ms % DAY) / HOUR)).padStart(2, '0')}h`
+  }
+
+  const left = Math.max(0, ms)
+
+  return `${Math.floor(left / HOUR)}h${String(Math.floor((left % HOUR) / MINUTE)).padStart(2, '0')}m`
+}
+
 // The percentages to draw as meters: context fill, then each rate-limit
-// window (only on a subscription). Each is left out until it has a reading.
-export function usageMeters(context: Percent, windows: Limit[]): Meter[] {
+// window (only on a subscription) with its time until reset. Each is left
+// out until it has a reading.
+export function usageMeters(context: Percent, windows: Limit[], now: number): Meter[] {
   const meters: Meter[] = context === null ? [] : [{ name: 'ctx', percent: context }]
 
-  return [...meters, ...windows.map(w => ({ name: SHORT[w.kind] ?? w.kind, percent: w.percentUsed }))]
+  return [
+    ...meters,
+    ...windows.map(w => {
+      const resetsAt = w.resetsAt === undefined ? NaN : Date.parse(w.resetsAt)
+      const detail = Number.isNaN(resetsAt) ? undefined : resetLabel(resetsAt - now)
+
+      return { name: SHORT[w.kind] ?? w.kind, percent: w.percentUsed, detail }
+    }),
+  ]
+}
+
+// Keeps nowMs current to the minute, so reset countdowns tick between turns.
+async function tickClock($: EngineInterface) {
+  const now = await $.clock.now()
+  await update($, nowMs, () => now)
+
+  if (clockTimer === null) {
+    clockTimer = $.clock.every(MINUTE, () => void tickClock($))
+  }
 }
 
 // The prompt cache as a draining meter: "42m" (or "07m") left, or a red "cold · new
@@ -197,6 +232,7 @@ export function registerUsage(on: On) {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
     await store($, await $.session.usage())
+    await tickClock($)
     await loadCache($)
     await tickCache($)
 
@@ -215,6 +251,7 @@ export function registerUsage(on: On) {
   on('session.measure', async ($, e, next) => {
     isTurnRunning = false
     await store($, e)
+    await tickClock($)
 
     if (e.changed.includes('context')) {
       const now = await $.clock.now()

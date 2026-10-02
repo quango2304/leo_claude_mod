@@ -4,8 +4,9 @@
 
 // `text` replaces the drawn percentage and `color` the level color, for a
 // meter that isn't a usage percentage (the cache countdown); `isAlert` draws
-// the text in that color too instead of dim.
-export type Meter = { name: string; percent: number; text?: string; color?: string; isAlert?: boolean }
+// the text in that color too instead of dim. `detail` is drawn dim after the
+// text (a rate-limit window's time until reset).
+export type Meter = { name: string; percent: number; text?: string; color?: string; isAlert?: boolean; detail?: string }
 
 const WIDTH = 44
 const HEIGHT = 6
