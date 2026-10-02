@@ -1,4 +1,4 @@
-export type Mood = 'idle' | 'typing' | 'working' | 'done' | 'error' | 'sleeping'
+export type Mood = 'idle' | 'typing' | 'thinking' | 'working' | 'waiting' | 'done' | 'error' | 'sleeping'
 
 export type Usd = number | null
 

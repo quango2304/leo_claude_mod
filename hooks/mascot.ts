@@ -1,28 +1,31 @@
 // The pixel dog at the desktop line's left. The desktop draws pictures as SVG
 // only, and a plain image is transparent but doesn't play SMIL, so she's a
 // pixel sprite of colored squares and the animation is a few frames swapped on
-// a timer (features/mascot.ts). A frame is a set of eyes, a mouth, a shift and
-// a few loose pixels (sparkles, a sweat drop, zzz).
+// a timer (features/mascot.ts). The head is drawn in code (ears, face, muzzle,
+// eyes, brows, nose, mouth) with an automatic outline; a frame is a look, a
+// pair of ears, a shift and a few loose pixels (a "?", hearts, zzz).
 
 import type { Mood } from '../types'
 
 export const MOOD_LABEL: Record<Mood, string> = {
   idle: 'relaxing',
   typing: 'watching you type',
-  working: 'thinking hard',
+  thinking: 'thinking',
+  working: 'running a tool',
+  waiting: 'waiting for you',
   done: 'cheering, the turn is done',
   error: 'worried, a tool failed',
   sleeping: 'asleep',
 }
 
-// The head is drawn into a 30×26 grid by the functions below (ears, face,
-// muzzle, eyes, nose, mouth), outlined automatically, and set two cells in from the corner
-// of a 34×30 board, so a hop or a sparkle has room around it.
-const HEAD_COLS = 30
+// The head is drawn into a 34×26 grid, set into a 40×30 board: three cells
+// each side for the ears' room and the loose pixels, two above and below.
+const HEAD_COLS = 34
 const HEAD_ROWS = 26
-const MARGIN = 2
-const COLS = HEAD_COLS + 2 * MARGIN
-const ROWS = HEAD_ROWS + 2 * MARGIN
+const MARGIN_X = 3
+const MARGIN_Y = 2
+const COLS = HEAD_COLS + 2 * MARGIN_X
+const ROWS = HEAD_ROWS + 2 * MARGIN_Y
 const PIXEL = 1.3
 export const MASCOT_WIDTH = Math.round(COLS * PIXEL)
 export const MASCOT_HEIGHT = Math.round(ROWS * PIXEL)
@@ -33,15 +36,20 @@ const COLORS: Record<string, string> = {
   L: '#f6d3a8', // fur shine
   Q: '#b9783f', // eye patch
   V: '#9a5f35', // ears
+  U: '#c98a5a', // inner ears
   C: '#fff1de', // muzzle, blaze
   b: '#ffb3a7', // blush
-  E: '#2a1f2d', // eyes, nose, brows
+  E: '#2a1f2d', // pupils, nose, lashes
+  I: '#7a4d2a', // iris
+  B: '#4a2e1a', // brows
   w: '#ffffff', // shine
   M: '#a8344f', // open mouth
   T: '#ff8fa3', // tongue
-  y: '#f6b94d', // sparkles
+  y: '#f6b94d', // sparkles, the "?"
+  r: '#fb7185', // hearts
   c: '#7dd3fc', // sweat
-  z: '#9b72e0', // zzz and typing dots
+  z: '#9b72e0', // zzz and dots
+  d: '#6b6f85', // dim dots
 }
 
 type Grid = string[][]
@@ -52,26 +60,36 @@ const put = (grid: Grid, x: number, y: number, ch: string) => {
   }
 }
 
-// A rounded square: |dx/a|^n + |dy/b|^n <= 1, for the bob and the face.
+// A rounded square: |dx/a|^n + |dy/b|^n <= 1, for the face and the ears.
 const inside = (x: number, y: number, cx: number, cy: number, a: number, b: number, n = 2) =>
   Math.abs((x - cx) / a) ** n + Math.abs((y - cy) / b) ** n <= 1
 
-// A round dark eye with a shine, about 6×7 cells around (cx, cy); the other
-// looks are strokes.
-function drawEye(grid: Grid, cx: number, cy: number, look: string) {
+type Eyes = 'open' | 'narrow' | 'blink' | 'happy' | 'sleep'
+type Brows = 'none' | 'raised' | 'worried' | 'focus' | 'think'
+type Mouth = 'smile' | 'grin' | 'o' | 'pantA' | 'pantB' | 'sad' | 'flat' | 'tiny'
+type Dot = [x: number, y: number, color: string]
+type Frame = { eyes: Eyes; look?: [number, number]; brows?: Brows; mouth: Mouth; ears?: number; dx?: number; dy?: number; dots?: Dot[] }
+
+const CX = 17 // the face's center column
+const EYE_Y = 12
+const EYE_X = [11, 23]
+
+// An eye around (cx, EYE_Y): brown iris, dark pupil that follows `look`, and
+// a shine; or a stroke when it is shut.
+function drawEye(grid: Grid, cx: number, eyes: Eyes, look: [number, number]) {
   const arch = (dx: number, height: number) => Math.round(height * (1 - (dx / 3.4) ** 2))
 
-  if (look === 'blink') {
+  if (eyes === 'blink') {
     for (let dx = -3; dx <= 3; dx++) {
-      put(grid, cx + dx, cy + 2, 'E')
+      put(grid, cx + dx, EYE_Y + 2, 'E')
     }
 
     return
   }
 
-  if (look === 'happy' || look === 'sleep') {
+  if (eyes === 'happy' || eyes === 'sleep') {
     for (let dx = -3; dx <= 3; dx++) {
-      const y = look === 'happy' ? cy + 1 - arch(dx, 2) : cy + arch(dx, 2)
+      const y = eyes === 'happy' ? EYE_Y + 1 - arch(dx, 2) : EYE_Y + arch(dx, 2)
       put(grid, cx + dx, y, 'E')
       put(grid, cx + dx, y + 1, 'E')
     }
@@ -79,59 +97,101 @@ function drawEye(grid: Grid, cx: number, cy: number, look: string) {
     return
   }
 
-  for (let dy = -4; dy <= 4; dy++) {
+  const isNarrow = eyes === 'narrow'
+  const [lx, ly] = look
+  const [ry, py] = isNarrow ? [2.5, 1] : [3.7, 0]
+  const [pry, pcy] = isNarrow ? [1.7, 1] : [2.9, 0]
+
+  for (let dy = -5; dy <= 5; dy++) {
     for (let dx = -4; dx <= 4; dx++) {
-      if (inside(dx, dy, 0, 0, 3.1, 3.7)) {
-        put(grid, cx + dx, cy + dy, 'E')
+      if (inside(dx, dy, 0, py, 3.2, ry)) {
+        put(grid, cx + dx, EYE_Y + dy, 'I')
+      }
+
+      if (inside(dx, dy, lx, pcy + ly * (isNarrow ? 0 : 1), 2.3, pry)) {
+        put(grid, cx + dx, EYE_Y + dy, 'E')
       }
     }
   }
 
-  // Looking down at the keys: the shine sits low.
-  const down = look === 'focus' ? 2 : 0
+  if (isNarrow) {
+    for (let dx = -3; dx <= 3; dx++) {
+      put(grid, cx + dx, EYE_Y - 1, 'E')
+    }
+  }
 
-  for (const [dx, dy] of [[-1, -2], [0, -2], [-1, -1], [0, -1], [1, 2]] as const) {
-    put(grid, cx + dx, cy + dy + down, 'w')
+  const [sx, sy] = [cx + lx, EYE_Y + (isNarrow ? 1 : ly)]
+  const shine: [number, number][] = isNarrow ? [[-1, 0], [0, 0]] : [[-1, -2], [0, -2], [-1, -1], [0, -1], [1, 2]]
+
+  for (const [dx, dy] of shine) {
+    put(grid, sx + dx, sy + dy, 'w')
   }
 }
 
-// The mouth hangs from the nose: a stem, then the smile or the open mouth.
-const MOUTHS: Record<string, [number, number, string][]> = {
-  smile: [[15, 21, 'E'], [15, 22, 'E'], [13, 23, 'E'], [14, 23, 'E'], [16, 23, 'E'], [17, 23, 'E']],
-  grin: [[15, 21, 'E'], ...[13, 14, 15, 16, 17].map((x): [number, number, string] => [x, 22, 'M']), ...[13, 14, 15, 16, 17].map((x): [number, number, string] => [x, 23, 'M']), ...[14, 15, 16].map((x): [number, number, string] => [x, 24, 'T']), [15, 25, 'T']],
-  o: [[15, 21, 'E'], ...[14, 15, 16].flatMap((x): [number, number, string][] => [[x, 22, 'M'], [x, 23, 'M']])],
-  wavy: [[15, 21, 'E'], [12, 23, 'E'], [13, 22, 'E'], [14, 23, 'E'], [16, 23, 'E'], [17, 22, 'E'], [18, 23, 'E']],
-  flat: [[15, 21, 'E'], [13, 22, 'E'], [14, 22, 'E'], [15, 22, 'E'], [16, 22, 'E'], [17, 22, 'E']],
+// The left eye's brow as offsets from the eye; the inner end is at +dx, and
+// the right eye mirrors it.
+const BROWS: Record<Exclude<Brows, 'none' | 'think'>, [number, number][]> = {
+  raised: [[-2, -6], [-1, -7], [0, -7], [1, -7], [2, -6]],
+  worried: [[-2, -5], [-1, -6], [0, -6], [1, -7], [2, -8]],
+  focus: [[-2, -8], [-1, -7], [0, -7], [1, -6], [2, -5]],
 }
 
-// The whole head: floppy ears behind, the face, an eye patch, a blaze and a
-// muzzle, then eyes, nose, blush and mouth, and the outline around it all.
-function drawHead(eyes: string, mouth: string): Grid {
+function drawBrows(grid: Grid, brows: Brows) {
+  if (brows === 'none') {
+    return
+  }
+
+  EYE_X.forEach((cx, side) => {
+    const shape = brows === 'think' ? (side === 0 ? BROWS.raised : [[-2, -5], [-1, -5], [0, -5], [1, -5], [2, -5]] as [number, number][]) : BROWS[brows]
+
+    for (const [dx, dy] of shape) {
+      put(grid, cx + (side === 0 ? dx : -dx), EYE_Y + dy, 'B')
+    }
+  })
+}
+
+// The mouth hangs from the nose: a stem, then a line or an open mouth, as
+// [offset from the center column, row, color].
+const MOUTHS: Record<Mouth, [number, number, string][]> = {
+  smile: [[0, 21, 'E'], [0, 22, 'E'], [-2, 23, 'E'], [-1, 23, 'E'], [1, 23, 'E'], [2, 23, 'E']],
+  grin: [[0, 21, 'E'], ...[-2, -1, 0, 1, 2].flatMap((x): [number, number, string][] => [[x, 22, 'M'], [x, 23, 'M']]), ...[-1, 0, 1].map((x): [number, number, string] => [x, 24, 'T']), [0, 25, 'T']],
+  o: [[0, 21, 'E'], ...[-1, 0, 1].flatMap((x): [number, number, string][] => [[x, 22, 'M'], [x, 23, 'M']])],
+  pantA: [[0, 21, 'E'], ...[-2, -1, 0, 1, 2].map((x): [number, number, string] => [x, 22, 'M']), ...[-1, 0, 1].flatMap((x): [number, number, string][] => [[x, 23, 'T'], [x, 24, 'T']])],
+  pantB: [[0, 21, 'E'], ...[-2, -1, 0, 1, 2].map((x): [number, number, string] => [x, 22, 'M']), ...[-1, 0, 1].flatMap((x): [number, number, string][] => [[x, 23, 'T'], [x, 24, 'T'], [x, 25, 'T']])],
+  sad: [[0, 21, 'E'], [-1, 22, 'E'], [1, 22, 'E'], [-2, 23, 'E'], [2, 23, 'E'], [-3, 24, 'E'], [3, 24, 'E']],
+  flat: [[0, 21, 'E'], [-2, 22, 'E'], [-1, 22, 'E'], [0, 22, 'E'], [1, 22, 'E'], [2, 22, 'E']],
+  tiny: [[0, 21, 'E'], [-1, 22, 'E'], [0, 22, 'E'], [1, 22, 'E']],
+}
+
+// The whole head: floppy ears behind (`earDy` lifts or drops them), the face,
+// an eye patch, a blaze and a muzzle, then eyes, brows, nose, blush and mouth,
+// and the outline around it all.
+function drawHead(frame: Frame): Grid {
   const grid = blank(HEAD_COLS, HEAD_ROWS)
+  const earDy = frame.ears ?? 0
 
   for (let y = 0; y < HEAD_ROWS; y++) {
     for (let x = 0; x < HEAD_COLS; x++) {
       const [px, py] = [x + 0.5, y + 0.5]
-      const isEar = inside(px, py, 4.2, 13.5, 4, 9) || inside(px, py, 25.8, 13.5, 4, 9)
 
-      if (isEar) {
-        grid[y]![x] = 'V'
+      if (inside(px, py, 5, 13.5 + earDy, 4.3, 9.3) || inside(px, py, 29, 13.5 + earDy, 4.3, 9.3)) {
+        grid[y]![x] = inside(px, py, 3, 14.5 + earDy, 1.7, 6.3) || inside(px, py, 31, 14.5 + earDy, 1.7, 6.3) ? 'U' : 'V'
       }
 
-      if (inside(px, py, 15, 14, 12.2, 11.4, 2.6)) {
-        const isShine = ((px - 10) / 3.5) ** 2 + ((py - 5) / 1.2) ** 2 <= 1
-        const isPatch = inside(px, py, 21, 12, 5, 5, 2)
-        const isBlaze = Math.abs(px - 15) <= 1 + (py - 2) * 0.12 && py < 14
+      if (inside(px, py, CX, 14, 12.2, 11.4, 2.6)) {
+        const isShine = ((px - 12) / 3.5) ** 2 + ((py - 5) / 1.2) ** 2 <= 1
+        const isPatch = inside(px, py, 23, 12, 5, 5, 2)
+        const isBlaze = Math.abs(px - CX) <= 1 + (py - 2) * 0.12 && py < 14
         grid[y]![x] = isBlaze ? 'C' : isPatch ? 'Q' : isShine ? 'L' : 'P'
       }
 
-      if (inside(px, py, 15, 20, 7.6, 5.4, 2.2) && grid[y]![x] !== '.') {
+      if (inside(px, py, CX, 20, 7.6, 5.4, 2.2) && grid[y]![x] !== '.' && grid[y]![x] !== 'V' && grid[y]![x] !== 'U') {
         grid[y]![x] = 'C'
       }
     }
   }
 
-  for (const cx of [5, 25]) {
+  for (const cx of [7, 27]) {
     for (let dx = -2; dx <= 2; dx++) {
       if (grid[17]?.[cx + dx] === 'P') {
         grid[17]![cx + dx] = 'b'
@@ -139,17 +199,20 @@ function drawHead(eyes: string, mouth: string): Grid {
     }
   }
 
-  drawEye(grid, 9, 12, eyes)
-  drawEye(grid, 21, 12, eyes)
-
-  for (const [dx, dy] of [[-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [-1, 1], [0, 1], [1, 1], [0, 2]] as const) {
-    put(grid, 15 + dx, 17 + dy, 'E')
+  for (const cx of EYE_X) {
+    drawEye(grid, cx, frame.eyes, frame.look ?? [0, 0])
   }
 
-  put(grid, 14, 17, 'w')
+  drawBrows(grid, frame.brows ?? 'none')
 
-  for (const [x, y, ch] of MOUTHS[mouth]!) {
-    put(grid, x, y, ch)
+  for (const [dx, dy] of [[-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [-1, 1], [0, 1], [1, 1], [0, 2]] as const) {
+    put(grid, CX + dx, 17 + dy, 'E')
+  }
+
+  put(grid, CX - 1, 17, 'w')
+
+  for (const [dx, y, ch] of MOUTHS[frame.mouth]) {
+    put(grid, CX + dx, y, ch)
   }
 
   const filled = grid.map(row => [...row])
@@ -168,52 +231,53 @@ function drawHead(eyes: string, mouth: string): Grid {
   return grid
 }
 
-type Dot = [x: number, y: number, color: string]
-type Frame = { eyes: string; mouth: string; dx?: number; dy?: number; dots?: Dot[] }
+// Loose pixels live in the board's right margin (cells 37-39) and its corners.
+const shape = (rows: string[], x: number, y: number, color: string): Dot[] =>
+  rows.flatMap((row, dy) => [...row].flatMap((ch, dx): Dot[] => (ch === '#' ? [[x + dx, y + dy, color]] : [])))
 
-// Dots are in board cells. A plus sparkle, a 2×2 dot, a teardrop, a "z".
-const plus = (x: number, y: number): Dot[] =>
-  [[x, y - 2], [x, y - 1], [x - 2, y], [x - 1, y], [x, y], [x + 1, y], [x + 2, y], [x, y + 1], [x, y + 2]].map(([px, py]) => [px!, py!, 'y'] as Dot)
-const blob = (x: number, y: number, color: string): Dot[] => [[x, y, color], [x + 1, y, color], [x, y + 1, color], [x + 1, y + 1, color]]
-const drop = (x: number, y: number): Dot[] => [[x + 1, y, 'c'], [x, y + 1, 'c'], [x + 1, y + 1, 'c'], [x + 2, y + 1, 'c'], [x, y + 2, 'c'], [x + 1, y + 2, 'c'], [x + 2, y + 2, 'c'], [x + 1, y + 3, 'c']]
-const zee = (x: number, y: number): Dot[] =>
-  [[x, y], [x + 1, y], [x + 2, y], [x + 1, y + 1], [x, y + 2], [x + 1, y + 2], [x + 2, y + 2]].map(([px, py]) => [px!, py!, 'z'] as Dot)
+const QUESTION = ['###', '..#', '.##', '...', '.#.']
+const HEART = ['#.#', '###', '.#.']
+const Z = ['###', '.#.', '###']
+const DROP = ['.#.', '###', '###', '.#.']
+const PLUS = ['.#.', '###', '.#.']
 
-// Two sparkle sets that swap each frame, so they twinkle around her.
-const sparkles = (step: number): Dot[] =>
-  step % 2 === 0 ? [...plus(4, 4), ...plus(30, 6)] : [...plus(5, 3), ...plus(29, 4)]
-
-const typingDots = (n: number): Dot[] => Array.from({ length: n }, (_, i) => blob(25 + i * 3, 1, 'z')).flat()
+const question = (bounce: number) => shape(QUESTION, 37, 2 + bounce, 'y')
+const hearts = (step: number) => [...shape(HEART, 37, 14 - 3 * (step % 4), 'r'), ...shape(HEART, 0, 8 - 2 * ((step + 2) % 4), 'r')]
+const sparkle = (step: number) => (step % 2 === 0 ? [...shape(PLUS, 0, 3, 'y'), ...shape(PLUS, 37, 10, 'y')] : [...shape(PLUS, 1, 1, 'y'), ...shape(PLUS, 36, 12, 'y')])
+const drop = (fall: number) => shape(DROP, 37, 5 + fall * 3, 'c')
+const thought = (lit: number) => [[38, 9, 1], [37, 5, 2], [37, 0, 3]].flatMap(([x, y, size], i) => shape(Array.from({ length: size! }, () => '#'.repeat(size!)), x!, y!, i === lit ? 'z' : 'd'))
+const typingDots = (n: number) => Array.from({ length: n }, (_, i) => shape(['##', '##'], 37, 8 - i * 3, 'z')).flat()
+const zees = (step: number) => [...shape(Z, 37, 9 - (step % 2), 'z'), ...(step >= 2 ? shape(Z, 36, 3, 'z') : [])]
 
 // Each mood's loop, one frame per tick (TICK_MS in features/mascot.ts). Idle
-// holds one picture for most ticks, so the line only redraws on the blink.
+// holds one picture for several ticks, so the line redraws only when she looks
+// around, blinks or twitches an ear.
 const IDLE: Frame = { eyes: 'open', mouth: 'smile' }
+const look = (lx: number, ly: number): Frame => ({ ...IDLE, look: [lx, ly] })
 
 export const FRAMES: Record<Mood, Frame[]> = {
-  idle: [IDLE, IDLE, IDLE, IDLE, IDLE, IDLE, IDLE, { eyes: 'blink', mouth: 'smile' }, IDLE, IDLE],
-  typing: [
-    { eyes: 'focus', mouth: 'smile', dy: 0, dots: typingDots(1) },
-    { eyes: 'focus', mouth: 'smile', dy: 1, dots: typingDots(2) },
-    { eyes: 'focus', mouth: 'smile', dy: 0, dots: typingDots(3) },
-    { eyes: 'focus', mouth: 'smile', dy: 1, dots: [] },
-  ],
-  working: [0, 1, 2, 3].map((i): Frame => ({ eyes: 'open', mouth: 'o', dx: i % 2, dots: sparkles(i) })),
-  done: [0, 1, 2, 3].map((i): Frame => ({ eyes: 'happy', mouth: 'grin', dy: i % 2 === 0 ? -2 : 0, dots: sparkles(i) })),
-  error: [0, 1].map((i): Frame => ({ eyes: 'open', mouth: 'wavy', dx: i, dots: drop(31, 8 + 2 * i) })),
-  sleeping: [0, 1, 2, 3].map((i): Frame => ({
-    eyes: 'sleep',
+  idle: [IDLE, IDLE, IDLE, look(-1, 0), look(-1, 0), IDLE, IDLE, { ...IDLE, eyes: 'blink' }, IDLE, IDLE, look(1, 0), look(1, 0), IDLE, { ...IDLE, ears: -2 }, IDLE, IDLE],
+  typing: [0, 1, 2, 3].map((i): Frame => ({ eyes: 'open', look: [0, 1], mouth: 'smile', dy: i % 2, ears: i % 2, dots: i === 3 ? [] : typingDots(i + 1) })),
+  thinking: [0, 1, 2, 3, 4, 5].map((i): Frame => ({
+    eyes: 'open',
+    look: i < 3 ? [-1, -1] : [1, -1],
+    brows: 'think',
     mouth: 'flat',
-    dy: i % 2,
-    dots: i < 2 ? zee(28, 4) : [...zee(28, 4), ...zee(31, 0)],
+    ears: i % 3 === 2 ? -2 : 0,
+    dots: thought(i % 4),
   })),
+  working: [0, 1, 2, 3].map((i): Frame => ({ eyes: 'narrow', look: [i % 2 === 0 ? -1 : 1, 0], brows: 'focus', mouth: i % 2 === 0 ? 'pantA' : 'pantB', dy: i % 2, ears: i % 2 === 0 ? 0 : 2, dots: sparkle(i) })),
+  waiting: [0, 1, 2, 3].map((i): Frame => ({ eyes: 'open', look: [0, 0], brows: 'raised', mouth: 'o', ears: i % 2 === 0 ? -3 : -2, dy: i % 2 === 0 ? 0 : -1, dots: question(i % 2) })),
+  done: [0, 1, 2, 3].map((i): Frame => ({ eyes: 'happy', mouth: 'grin', ears: i % 2 === 0 ? 0 : 2, dy: i % 2 === 0 ? -2 : 0, dots: [...hearts(i), ...sparkle(i)] })),
+  error: [0, 1, 2, 3].map((i): Frame => ({ eyes: 'open', look: [0, 1], brows: 'worried', mouth: 'sad', ears: 3, dx: i % 2, dots: drop(i % 4) })),
+  sleeping: [0, 1, 2, 3].map((i): Frame => ({ eyes: 'sleep', mouth: 'tiny', ears: 3, dy: i < 2 ? 0 : 1, dots: zees(i) })),
 }
 
 // The frame on the board as rows of cell codes.
 function rowsOf(frame: Frame) {
   const board = blank(COLS, ROWS)
-  const head = drawHead(frame.eyes, frame.mouth)
 
-  head.forEach((row, y) => row.forEach((ch, x) => ch !== '.' && put(board, x + MARGIN + (frame.dx ?? 0), y + MARGIN + (frame.dy ?? 0), ch)))
+  drawHead(frame).forEach((row, y) => row.forEach((ch, x) => ch !== '.' && put(board, x + MARGIN_X + (frame.dx ?? 0), y + MARGIN_Y + (frame.dy ?? 0), ch)))
 
   for (const [x, y, key] of frame.dots ?? []) {
     put(board, x, y, key)
