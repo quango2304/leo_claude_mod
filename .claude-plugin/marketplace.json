@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "leo-mods",
-      "description": "Leo's Claude Code mods: usage bars, limits, cost and running agents",
+      "description": "Leo's Claude Code mods: usage bars, limits, cost, prompt cache countdown, active time and running agents",
       "source": "./",
       "category": "productivity"
     }

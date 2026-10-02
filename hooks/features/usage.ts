@@ -1,21 +1,31 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, On, SessionUsage } from 'claude-code'
+import type { EngineInterface, On, SessionUsage, Timer } from 'claude-code'
 
 import type { Limit, Percent, Usd } from '../../types'
 import type { Meter } from '../meters'
 
-// Everything $.session.usage() reports: context fill, rate-limit windows and
-// cost. One feature, because the engine takes one session.start and one
-// session.measure hook per plugin.
+// Everything $.session.usage() reports (context fill, rate-limit windows,
+// cost) and the prompt cache's countdown, which runs off the same measurements.
+// One feature, because the engine takes one hook per event per plugin.
 const contextPercent = atom({ plugin: 'leo-mods', key: 'contextPercent' } as const, null as Percent)
 const limits = atom({ plugin: 'leo-mods', key: 'limits' } as const, [] as Limit[])
 const costUsd = atom({ plugin: 'leo-mods', key: 'costUsd' } as const, null as Usd)
 const limitAlerted = atom({ plugin: 'leo-mods', key: 'limitAlerted' } as const, [] as string[])
+const cacheAt = atom({ plugin: 'leo-mods', key: 'cacheAt' } as const, null as number | null)
+const cacheTtlMs = atom({ plugin: 'leo-mods', key: 'cacheTtlMs' } as const, null as number | null)
+const cacheLeftMs = atom({ plugin: 'leo-mods', key: 'cacheLeftMs' } as const, null as number | null)
+const cacheColdToasted = atom({ plugin: 'leo-mods', key: 'cacheColdToasted' } as const, null as number | null)
 
 const ALERT_AT = 80
+const CACHE_TICK_MS = 15_000
+const HOUR = 3_600_000
+const FIVE_MINUTES = 300_000
 
 const SHORT: Record<string, string> = { five_hour: '5h', seven_day: '7d', spend_limit: 'spend' }
 const LONG: Record<string, string> = { five_hour: '5-hour', seven_day: '7-day', spend_limit: 'Spend' }
+
+let cacheTimer: Timer | null = null
+let isTurnRunning = false
 
 // The percentages to draw as meters: context fill, then each rate-limit
 // window (only on a subscription). Each is left out until it has a reading.
@@ -25,12 +35,35 @@ export function usageMeters(context: Percent, windows: Limit[]): Meter[] {
   return [...meters, ...windows.map(w => ({ name: SHORT[w.kind] ?? w.kind, percent: w.percentUsed }))]
 }
 
-// "$0.1268" under a dollar, "$1.09" above.
-export function costLabel(total: Usd) {
-  if (total === null) {
+// The prompt cache as a draining meter: "42m" left, or "cold" once it lapsed.
+// Null before the first response, or with prompt caching off.
+export function cacheMeter(leftMs: number | null, ttlMs: number | null): Meter | null {
+  if (leftMs === null || ttlMs === null) {
     return null
   }
 
+  if (leftMs === 0) {
+    return { name: 'cache', percent: 0, text: 'cold', color: '#f87171' }
+  }
+
+  const fraction = leftMs / ttlMs
+  const minutes = Math.ceil(leftMs / 60_000)
+  const color = fraction > 0.4 ? '#34d399' : fraction > 0.15 ? '#fbbf24' : '#f87171'
+
+  return { name: 'cache', percent: fraction * 100, text: `${minutes}m`, color }
+}
+
+// The cost's color: green under $50, amber under $100, red from $100.
+export function costColor(total: number) {
+  if (total >= 100) {
+    return '#f87171'
+  }
+
+  return total >= 50 ? '#fbbf24' : '#4ade80'
+}
+
+// "$0.1268" under a dollar, "$1.09" above.
+export function costLabel(total: number) {
   return total < 1 ? `$${total.toFixed(4)}` : `$${total.toFixed(2)}`
 }
 
@@ -63,6 +96,61 @@ async function alertIfHigh($: EngineInterface, windows: Limit[]) {
   }
 }
 
+// The main conversation's cache TTL, decided the way Claude Code decides it:
+// the env var, then the promptCacheTtl setting, then 1 hour on a subscription
+// within its limits and 5 minutes otherwise. Null with caching off.
+async function cacheTtl($: EngineInterface, windows: Limit[]) {
+  const fromEnv = await $.env.get('CLAUDE_CODE_PROMPT_CACHE_TTL')
+
+  if (fromEnv === '1h' || fromEnv === '5m') {
+    return fromEnv === '1h' ? HOUR : FIVE_MINUTES
+  }
+
+  if (await $.env.get('DISABLE_PROMPT_CACHING')) {
+    return null
+  }
+
+  const settings = (await $.settings.read()) as { promptCacheTtl?: string }
+
+  if (settings.promptCacheTtl === '1h' || settings.promptCacheTtl === '5m') {
+    return settings.promptCacheTtl === '1h' ? HOUR : FIVE_MINUTES
+  }
+
+  if (await $.env.get('FORCE_PROMPT_CACHING_5M')) {
+    return FIVE_MINUTES
+  }
+
+  const isSubscription = windows.length > 0 && windows.every(w => w.percentUsed < 100)
+
+  return isSubscription ? HOUR : FIVE_MINUTES
+}
+
+// Recomputes the time left, toasting once when the cache goes cold, and keeps
+// a timer running while it's warm.
+async function tickCache($: EngineInterface) {
+  const at = await read($, cacheAt)
+  const ttl = await read($, cacheTtlMs)
+
+  if (at === null || ttl === null) {
+    return
+  }
+
+  const left = isTurnRunning ? ttl : Math.max(0, at + ttl - (await $.clock.now()))
+  await update($, cacheLeftMs, () => left)
+
+  if (left > 0 && cacheTimer === null) {
+    cacheTimer = $.clock.every(CACHE_TICK_MS, () => void tickCache($))
+  } else if (left === 0) {
+    cacheTimer?.cancel()
+    cacheTimer = null
+
+    if ((await read($, cacheColdToasted)) !== at) {
+      $.ui.toast('Prompt cache expired: your next message re-reads the whole conversation at full price. For a new task, start a new session.', { timeoutMs: 10_000 })
+      await update($, cacheColdToasted, () => at)
+    }
+  }
+}
+
 async function store($: EngineInterface, usage: Omit<SessionUsage, 'startedAt'>) {
   const percent = usage.context.percent ?? null
   const windows: Limit[] = usage.rateLimits.map(w => ({ ...w }))
@@ -78,12 +166,31 @@ export function registerUsage(on: On) {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
     await store($, await $.session.usage())
+    await tickCache($)
 
     return result
   })
 
+  on('turn.start', async ($, e, next) => {
+    isTurnRunning = true
+    await tickCache($)
+
+    return next(e)
+  })
+
+  // Fires after each main-thread turn: a context change means the main
+  // conversation got a response, which restarts the cache's TTL.
   on('session.measure', async ($, e, next) => {
+    isTurnRunning = false
     await store($, e)
+
+    if (e.changed.includes('context')) {
+      const now = await $.clock.now()
+      const ttl = await cacheTtl($, e.rateLimits.map(w => ({ ...w })))
+      await update($, cacheAt, () => now)
+      await update($, cacheTtlMs, () => ttl)
+      await tickCache($)
+    }
 
     return next(e)
   })

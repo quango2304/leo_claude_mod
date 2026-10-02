@@ -4,30 +4,34 @@ Leo's personal mods for Claude Code (terminal and the desktop app's Code tab), p
 
 ## Features
 
-One clean line of live session info. In the desktop app it sits above the prompt, with the agent count at the left and small bars at the right:
+One clean line of live session info. In the desktop app it sits above the prompt, with activity at the left and small bars at the right:
 
 ```
-2 agents                          ctx ▬▬▬▭▭ 42%   5h ▬▭▭▭▭ 23%   7d ▬▭▭▭▭ 12%   $0.1268
+active 12m · 2 agents     cache ▬▬▬▬▭ 42m   ctx ▬▬▬▭▭ 42%   5h ▬▭▭▭▭ 23%   7d ▬▭▭▭▭ 12%   $0.1268
 ```
 
 In the terminal it's one footer label, with text bars:
 
 ```
-2 agents · ctx ▰▰▱▱▱ 42% · 5h ▰▱▱▱▱ 23% · 7d ▱▱▱▱▱ 12% · $0.13
+active 12m · 2 agents · cache ▰▰▰▰▱ 42m · ctx ▰▰▱▱▱ 42% · 5h ▰▱▱▱▱ 23% · 7d ▱▱▱▱▱ 12% · $0.13
 ```
 
 (See [Where a mod can draw](#where-a-mod-can-draw) for why the two differ.)
 
 | Part | What it shows | File |
 | --- | --- | --- |
-| `2 agents` | Subagents running right now; hidden when none are. | `hooks/features/agents.ts` |
+| `active 12m` | Time Claude has spent working this session: the main conversation's turn durations added up (not time since the session opened). Counted from when the plugin loads, which is the session start in a new session. | `hooks/features/activity.ts` |
+| `2 agents` | Subagents running right now; hidden when none are. | `hooks/features/activity.ts` |
+| `cache` | How long the prompt cache stays warm: a bar that drains (green, then amber under 40% left, red under 15%) and the minutes left, or `cold` once it expired. A toast tells you when it expires: your next message then re-reads the whole conversation at full price, so for a new task a new session is cheaper. | `hooks/features/usage.ts` |
 | `ctx` | How full the context window is. Near 100%, the conversation gets compacted. | `hooks/features/usage.ts` |
 | `5h` / `7d` | How much of your subscription's 5-hour and 7-day usage limits you've used. Hidden off a subscription (API key). | `hooks/features/usage.ts` |
-| `$0.1268` | The session's total cost. | `hooks/features/usage.ts` |
+| `$0.1268` | The session's total cost: green under $50, amber under $100, red from $100. | `hooks/features/usage.ts` |
 
-Bars are grey, then amber from 70% and red from 90% (`hooks/meters.ts`). When a usage limit passes **80%**, a toast pops up once per window, e.g. "5-hour limit at 82%, resets in 1h 20m".
+Each bar has its own color (ctx blue, 5h violet, 7d teal), then turns amber from 50% and red from 80% (`hooks/meters.ts`). When a usage limit passes **80%**, a toast pops up once per window, e.g. "5-hour limit at 82%, resets in 1h 20m".
 
-Usage numbers are read when the session starts and updated after each turn. The agent count refreshes when a subagent starts and when a turn ends, and every 2 seconds while any are running.
+Usage numbers are read when the session starts and updated after each turn.
+
+**How the cache countdown works.** Each response from the main conversation restarts the prompt cache's timer, and the bar stays full while a turn runs. The TTL follows Claude Code's own rule: `CLAUDE_CODE_PROMPT_CACHE_TTL`, then the `promptCacheTtl` setting, then **1 hour** on a Claude subscription within its usage limits and **5 minutes** on an API key, Bedrock or Vertex. It's an estimate from the client side: the API doesn't report when an entry expires. Active time updates when each turn ends. The agent count refreshes when a subagent starts and when a turn ends, and every 2 seconds while any are running.
 
 The cost is the same estimate `/cost` shows, priced at API list rates. On a Pro/Max subscription it is not what you pay.
 
@@ -91,7 +95,7 @@ leo_claude_mod/
 │   ├── meters.ts                draws a percentage as a bar (SVG on desktop, ▰▱ in the terminal)
 │   └── features/
 │       ├── usage.ts             context %, usage limits, cost, limit alerts
-│       └── agents.ts            running subagents
+│       └── activity.ts          active time, running subagents
 ├── types/index.d.ts             declares every value the plugin stores ($.state)
 ├── docs/ui-spots.png            where a mod can draw (see below)
 └── tsconfig.json                editor typings (the engine writes them to .claude-plugin/types)

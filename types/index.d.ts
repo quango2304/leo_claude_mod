@@ -12,6 +12,11 @@ declare module 'claude-code' {
       limits: Limit[]
       limitAlerted: string[]
       runningAgents: number
+      activeMs: number
+      cacheAt: number | null
+      cacheTtlMs: number | null
+      cacheLeftMs: number | null
+      cacheColdToasted: number | null
     }
   }
 }
