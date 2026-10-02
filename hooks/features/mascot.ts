@@ -16,7 +16,7 @@ const mascotFrame = atom({ plugin: 'leo-mods', key: 'mascotFrame' } as const, 0)
 // shows fast; each mood steps its picture every FRAME_TICKS of them.
 const TICK_MS = 200
 const TYPING_MS = 500
-const DONE_MS = 3000
+const DONE_MS = 2000
 
 type Facts = { isWorking: boolean; keyAt: number; doneAt: number }
 
