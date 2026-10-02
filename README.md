@@ -4,9 +4,30 @@ Leo's personal mods for Claude Code (terminal and the desktop app's Code tab), p
 
 ## Features
 
-| Feature | File | What it does |
+One clean line of live session info. In the desktop app it sits above the prompt, with the agent count at the left and small bars at the right:
+
+```
+2 agents                          ctx ▬▬▬▭▭ 42%   5h ▬▭▭▭▭ 23%   7d ▬▭▭▭▭ 12%   $0.1268
+```
+
+In the terminal it's one footer label, with text bars:
+
+```
+2 agents · ctx ▰▰▱▱▱ 42% · 5h ▰▱▱▱▱ 23% · 7d ▱▱▱▱▱ 12% · $0.13
+```
+
+(See [Where a mod can draw](#where-a-mod-can-draw) for why the two differ.)
+
+| Part | What it shows | File |
 | --- | --- | --- |
-| Session cost | `hooks/features/cost.ts` | Shows the session's total cost (USD), e.g. `$1.09`: as a footer label in the terminal, and as one right-aligned line above the prompt in the desktop app (see below for why). It is read at session start and updated after each turn. |
+| `2 agents` | Subagents running right now; hidden when none are. | `hooks/features/agents.ts` |
+| `ctx` | How full the context window is. Near 100%, the conversation gets compacted. | `hooks/features/usage.ts` |
+| `5h` / `7d` | How much of your subscription's 5-hour and 7-day usage limits you've used. Hidden off a subscription (API key). | `hooks/features/usage.ts` |
+| `$0.1268` | The session's total cost. | `hooks/features/usage.ts` |
+
+Bars are grey, then amber from 70% and red from 90% (`hooks/meters.ts`). When a usage limit passes **80%**, a toast pops up once per window, e.g. "5-hour limit at 82%, resets in 1h 20m".
+
+Usage numbers are read when the session starts and updated after each turn. The agent count refreshes when a subagent starts and when a turn ends, and every 2 seconds while any are running.
 
 The cost is the same estimate `/cost` shows, priced at API list rates. On a Pro/Max subscription it is not what you pay.
 
@@ -24,7 +45,7 @@ claude plugin install leo-mods@quango2304
 
 Or inside an interactive `claude` session: `/plugin marketplace add quango2304/leo_claude_mod`, then `/plugin install leo-mods@quango2304`.
 
-Start a new session (in the terminal or the desktop app's Code tab). The cost appears after the first turn: in the footer in the terminal, above the prompt in the desktop app.
+Start a new session (in the terminal or the desktop app's Code tab). The usage line appears after the first turn: in the footer in the terminal, above the prompt in the desktop app.
 
 **Update** to the latest version:
 
@@ -53,7 +74,7 @@ Clone the repo and load it straight from disk instead of the installed copy, by 
 }
 ```
 
-`CLAUDE_CODE_PLUGIN_DIR_WATCH` makes edits reload in a running session; without it, changes apply from the next new session. Don't have the installed plugin enabled at the same time, or both copies load and the footer shows the cost twice (`claude plugin disable leo-mods@quango2304`).
+`CLAUDE_CODE_PLUGIN_DIR_WATCH` makes edits reload in a running session; without it, changes apply from the next new session. Don't have the installed plugin enabled at the same time, or both copies load and the usage line shows twice (`claude plugin disable leo-mods@quango2304`).
 
 To publish a change, bump `version` in `.claude-plugin/plugin.json` so `claude plugin update` picks it up.
 
@@ -67,8 +88,10 @@ leo_claude_mod/
 ├── hooks/
 │   ├── hooks.json               points to register.tsx
 │   ├── register.tsx             wires up the features and draws their labels
+│   ├── meters.ts                draws a percentage as a bar (SVG on desktop, ▰▱ in the terminal)
 │   └── features/
-│       └── cost.ts              feature: session cost
+│       ├── usage.ts             context %, usage limits, cost, limit alerts
+│       └── agents.ts            running subagents
 ├── types/index.d.ts             declares every value the plugin stores ($.state)
 ├── docs/ui-spots.png            where a mod can draw (see below)
 └── tsconfig.json                editor typings (the engine writes them to .claude-plugin/types)
@@ -97,17 +120,18 @@ A rough rule: short numbers go in the footer (4) in the terminal and above the p
 
 ## Adding a feature
 
-The engine scans the module before loading it and enforces three rules:
+The engine scans the module before loading it and enforces these rules:
 
 - `on` may be passed to a named function in another file, so a feature exports `register<Name>(on: On)` and puts its hooks there.
-- `$` is never passed across an import. A hook defined in a feature file can use `$` itself, but UI that combines several features (the labels) is drawn in `register.tsx`.
-- Every state read/write names its `atom({ plugin: 'leo-mods', key })` in the same file, so a value the UI reads is declared once in the feature file (to write it) and again in `register.tsx` (to read it), with the same key.
+- **One hook per event per plugin** (unless the hooks use different matchers). Two features can't both hook `session.start`, so features that read the same event belong in one file; that's why context, limits and cost share `usage.ts`.
+- `$` is never passed across an import, only to functions declared at the top level of the same file. A feature file's own hooks can use `$`; the combined line is drawn in `register.tsx` (`readLine`).
+- Every state read/write names its `atom({ plugin: 'leo-mods', key })` in the same file, so a value the line shows is declared in the feature file (to write it) and again in `register.tsx` (to read it), with the same key.
 
 Steps:
 
-1. Write `hooks/features/<name>.ts` exporting `register<Name>(on)` and, if it shows something, a plain `<name>Label(value)` formatter. Use `cost.ts` as the template.
+1. Write `hooks/features/<name>.ts` exporting `register<Name>(on)` and, if it shows something, a plain `<name>Label(value)` formatter. Use `usage.ts` as the template. If it needs an event another feature already hooks, add it to that feature instead.
 2. Declare any stored value in `types/index.d.ts` under `'leo-mods'`.
-3. In `register.tsx`, call `register<Name>(on)`, declare the atom with the same key, and add its label to both `labels` lists (footer and desktop line).
+3. In `register.tsx`, call `register<Name>(on)`, declare the atom with the same key, and add it in `readLine`: a percentage goes in `meters` (drawn as a bar), anything else in `labels`.
 4. Validate:
 
 ```bash
