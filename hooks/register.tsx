@@ -85,7 +85,7 @@ export const register: Register = on => {
         <Svg source={svgSummary(summary)} alt={summaryText(summary)} width={size.width} height={size.height} />
         <Box alignItems="center" gap={2} flexShrink={0}>
           {line.meters.map(m => (
-            <Svg key={m.name} source={svgMeter(m)} alt={meterAlt(m)} width={meterSize.width} height={meterSize.height} />
+            <Svg key={m.name} source={svgMeter(m)} alt={meterAlt(m)} {...meterSize(m)} />
           ))}
         </Box>
       </Box>

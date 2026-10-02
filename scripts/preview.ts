@@ -86,12 +86,12 @@ function img(source: string, alt: string, size: { width: number; height: number 
 // at the right.
 function band(line: Line, background: string) {
   const summary = { cost: costLabel(line.cost), costColor: costColor(line.cost), active: activeLabel(line.activeMs), agents: agentsLabel(line.agents) }
-  const meters = line.meters.map(m => img(svgMeter(m), meterAlt(m), meterSize)).join('')
+  const meters = line.meters.map(m => img(svgMeter(m), meterAlt(m), meterSize(m))).join('')
 
   return `<div class="band" style="background:${background}">${img(svgSummary(summary), summaryText(summary), summarySize(summary))}<div class="meters">${meters}</div></div>`
 }
 
-const BAND_HEIGHT = meterSize.height + 20
+const BAND_HEIGHT = meterSize(PLACEHOLDER_METERS[0]!).height + 20
 const GAP = 10
 const PADDING = 16
 const WIDTH = 700

@@ -15,10 +15,11 @@ export type Meter = { name: string; percent: number; text?: string; color?: stri
 const SCALE = 0.8
 const px = (base: number) => Math.round(base * SCALE * 10) / 10
 
-// Every desktop meter has the same size, placeholder or not, so the line never
-// moves: wide enough for "week Sat 12:00 PM" over the bar and for "cold · new
-// session?" inside it.
+// A desktop meter keeps its size, placeholder or not, so the line never moves:
+// wide enough for "week Sat 12:00 PM" over the bar; cache and context, with
+// no reset time, narrower.
 const WIDTH = px(116)
+const NARROW: Record<string, number> = { cache: px(81), context: px(81) }
 const LABEL_PX = px(11)
 const LABEL_HEIGHT = px(14)
 const GAP = px(3)
@@ -73,6 +74,7 @@ function svgText(text: string, attributes: string) {
 // centered inside, in the bar's color over the empty track and near-black
 // over the fill (clipped to it), so it reads on both.
 export function svgMeter(meter: Meter) {
+  const { width: WIDTH } = meterSize(meter)
   const p = Math.min(100, Math.max(0, meter.percent))
   const fill = p === 0 ? 0 : Math.max(BAR_HEIGHT, (WIDTH * p) / 100)
   const r = BAR_HEIGHT / 2
@@ -134,7 +136,9 @@ export function textMeter(percent: number) {
   return '▰'.repeat(filled) + '▱'.repeat(CELLS - filled)
 }
 
-export const meterSize = { width: WIDTH, height: HEIGHT }
+export function meterSize(meter: Meter) {
+  return { width: NARROW[meter.name] ?? WIDTH, height: HEIGHT }
+}
 
 // Until the first response (a new session, before its first turn) the line
 // keeps its shape: the same meters at the same size, with empty bars, zeroed

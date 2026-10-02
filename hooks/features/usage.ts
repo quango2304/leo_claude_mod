@@ -86,8 +86,8 @@ async function tickClock($: EngineInterface) {
   }
 }
 
-// The prompt cache as a draining meter: "42m" (or "07m") left, or a red "cold · new
-// session?" once it lapsed.
+// The prompt cache as a draining meter: "42m" (or "07m") left, or a red "cold"
+// once it lapsed.
 // Null before the first response, or with prompt caching off.
 export function cacheMeter(leftMs: number | null, ttlMs: number | null): Meter | null {
   if (leftMs === null || ttlMs === null) {
@@ -95,7 +95,7 @@ export function cacheMeter(leftMs: number | null, ttlMs: number | null): Meter |
   }
 
   if (leftMs === 0) {
-    return { name: 'cache', percent: 0, text: 'cold · new session?', color: '#f87171' }
+    return { name: 'cache', percent: 0, text: 'cold', color: '#f87171' }
   }
 
   const fraction = leftMs / ttlMs
