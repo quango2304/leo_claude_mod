@@ -13,7 +13,7 @@ test('a fresh session shows placeholders on the desktop', async $ => {
   })
 
   const bars = await ui.findAll({ type: 'Svg' })
-  expect(bars.map(b => b.props.alt)).toEqual(['$0.00 · active 0m', 'cache 00m', 'context 00%', '5h 00% 0h00m', 'week 00% --- -:-- --'])
+  expect(bars.map(b => b.props.alt)).toEqual(['$0.00 · -- tok/s · active 0m', 'cache 00m', 'context 00%', '5h 00% 0h00m', 'week 00% --- -:-- --'])
   expect(bars.slice(1).map(b => [b.props.width, b.props.height])).toEqual(PLACEHOLDER_METERS.map(m => [meterSize(m).width, meterSize(m).height]))
   expect(bars[0]?.props.height).toBe(meterSize(PLACEHOLDER_METERS[0]!).height)
 })

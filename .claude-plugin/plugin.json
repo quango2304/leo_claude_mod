@@ -1,6 +1,6 @@
 {
   "name": "leo-mods",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Leo's Claude Code mods: usage bars, limits, cost, prompt cache countdown, active time and running agents",
   "author": { "name": "quango2304", "url": "https://github.com/quango2304" },
   "homepage": "https://github.com/quango2304/leo_claude_mod",

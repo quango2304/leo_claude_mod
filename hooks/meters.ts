@@ -97,19 +97,21 @@ export function svgMeter(meter: Meter) {
   )
 }
 
-// The summary at the line's left: the cost (bold, in its color) over the
-// active time (pink) and running agents (gray). Its width follows its longer
-// row; text runs from the left edge, so a generous width costs nothing.
-export type Summary = { cost: string; costColor: string; active: string; agents: string | null }
+// The summary at the line's left: the cost (bold, in its color) and output
+// speed (gray) over the active time (pink) and running agents (gray). Its
+// width follows its longer row; text runs from the left edge, so a generous
+// width costs nothing.
+export type Summary = { cost: string; costColor: string; speed: string; active: string; agents: string | null }
 
 export function summaryText(summary: Summary) {
-  return [summary.cost, summary.active, summary.agents].filter(Boolean).join(' · ')
+  return [summary.cost, summary.speed, summary.active, summary.agents].filter(Boolean).join(' · ')
 }
 
 export function summarySize(summary: Summary) {
+  const first = summary.cost.length + 3 + summary.speed.length
   const second = summary.active.length + (summary.agents === null ? 0 : summary.agents.length + 3)
 
-  return { width: Math.ceil(Math.max(summary.cost.length, second) * SUMMARY_CHAR_PX) + 2, height: HEIGHT }
+  return { width: Math.ceil(Math.max(first, second) * SUMMARY_CHAR_PX) + 2, height: HEIGHT }
 }
 
 export function svgSummary(summary: Summary) {
@@ -119,7 +121,9 @@ export function svgSummary(summary: Summary) {
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}">` +
-    svgText(summary.cost, `${row} y="${HEIGHT / 2 - 2}" font-weight="700" fill="${summary.costColor}"`) +
+    `<text font-family="${FONT}" style="font-variant-numeric: tabular-nums" ${row} y="${HEIGHT / 2 - 2}">` +
+    `<tspan font-weight="700" fill="${summary.costColor}">${escapeXml(summary.cost)}</tspan>` +
+    `<tspan fill="${LABEL_COLOR}"> · ${escapeXml(summary.speed)}</tspan></text>` +
     `<text font-family="${FONT}" style="font-variant-numeric: tabular-nums" ${row} y="${HEIGHT - 2}" fill="${ACTIVE_COLOR}">${escapeXml(summary.active)}${agents}</text>` +
     `</svg>`
   )

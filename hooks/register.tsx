@@ -3,6 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Limit, Percent, Usd } from '../types'
 import { activeLabel, agentsLabel, registerActivity } from './features/activity'
+import { registerSpeed, speedLabel } from './features/speed'
 import { cacheMeter, costColor, costLabel, registerUsage, usageMeters } from './features/usage'
 import { type Meter, meterAlt, meterSize, meterText, PLACEHOLDER_METERS, type Summary, summarySize, summaryText, svgMeter, svgSummary, textMeter } from './meters'
 
@@ -13,12 +14,13 @@ const limits = atom({ plugin: 'leo-mods', key: 'limits' } as const, [] as Limit[
 const costUsd = atom({ plugin: 'leo-mods', key: 'costUsd' } as const, null as Usd)
 const runningAgents = atom({ plugin: 'leo-mods', key: 'runningAgents' } as const, 0)
 const activeMs = atom({ plugin: 'leo-mods', key: 'activeMs' } as const, 0)
+const outputSpeed = atom({ plugin: 'leo-mods', key: 'outputSpeed' } as const, null as number | null)
 const cacheLeftMs = atom({ plugin: 'leo-mods', key: 'cacheLeftMs' } as const, null as number | null)
 const cacheTtlMs = atom({ plugin: 'leo-mods', key: 'cacheTtlMs' } as const, null as number | null)
 const nowMs = atom({ plugin: 'leo-mods', key: 'nowMs' } as const, 0)
 
-// What the line shows: the summary (cost, active time, agents) and the meters
-// (cache, context, 5h, week).
+// What the line shows: the summary (cost, speed, active time, agents) and
+// the meters (cache, context, 5h, week).
 async function readLine($: EngineInterface): Promise<{ summary: Summary; meters: Meter[] }> {
   const active = await read($, activeMs)
   const cache = cacheMeter(await read($, cacheLeftMs), await read($, cacheTtlMs))
@@ -27,6 +29,7 @@ async function readLine($: EngineInterface): Promise<{ summary: Summary; meters:
   const summary = {
     cost: cost === null ? '' : costLabel(cost),
     costColor: costColor(cost ?? 0),
+    speed: speedLabel(await read($, outputSpeed)),
     active: activeLabel(active),
     agents: agentsLabel(await read($, runningAgents)),
   }
@@ -45,9 +48,10 @@ async function readLine($: EngineInterface): Promise<{ summary: Summary; meters:
 export const register: Register = on => {
   registerUsage(on)
   registerActivity(on)
+  registerSpeed(on)
 
   // The terminal draws a mod's footer labels, so there the line is one label:
-  // "active 12m · 2 agents · context ▰▰▱▱▱ 42% · 5h ▰▱▱▱▱ 23% · $0.13".
+  // "active 12m · 2 agents · 62 tok/s · context ▰▰▱▱▱ 42% · 5h ▰▱▱▱▱ 23% · $0.13".
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     const line = await readLine($)
 
@@ -59,6 +63,7 @@ export const register: Register = on => {
     const text = [
       summary.active,
       summary.agents,
+      summary.speed,
       ...line.meters.map(m => [m.name, textMeter(m.percent), meterText(m), m.detail].filter(Boolean).join(' ')),
       summary.cost,
     ].filter(Boolean).join(' · ')

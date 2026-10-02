@@ -13,6 +13,7 @@ declare module 'claude-code' {
       limitAlerted: string[]
       runningAgents: number
       activeMs: number
+      outputSpeed: number | null
       cacheAt: number | null
       cacheTtlMs: number | null
       cacheLeftMs: number | null
