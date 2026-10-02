@@ -79,7 +79,7 @@ export const register: Register = on => {
                 width={meterSize.width}
                 height={meterSize.height}
               />
-              <Text dimColor>{meterText(m)}</Text>
+              {m.isAlert ? <Text color={m.color}>{meterText(m)}</Text> : <Text dimColor>{meterText(m)}</Text>}
             </Box>
           ))}
           {line.labels.map(l => (

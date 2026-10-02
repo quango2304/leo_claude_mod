@@ -16,6 +16,12 @@ const cacheTtlMs = atom({ plugin: 'leo-mods', key: 'cacheTtlMs' } as const, null
 const cacheLeftMs = atom({ plugin: 'leo-mods', key: 'cacheLeftMs' } as const, null as number | null)
 const cacheColdToasted = atom({ plugin: 'leo-mods', key: 'cacheColdToasted' } as const, null as number | null)
 
+// The cache timestamp also goes to $.store, per session, so a restarted or
+// resumed session still knows when its cache was last refreshed.
+const CACHE_STORE_KEY = 'cacheBySession'
+const CACHE_STORE_MAX = 50
+const TOAST_MS = 30_000
+
 const ALERT_AT = 80
 const CACHE_TICK_MS = 15_000
 const HOUR = 3_600_000
@@ -35,7 +41,8 @@ export function usageMeters(context: Percent, windows: Limit[]): Meter[] {
   return [...meters, ...windows.map(w => ({ name: SHORT[w.kind] ?? w.kind, percent: w.percentUsed }))]
 }
 
-// The prompt cache as a draining meter: "42m" left, or "cold" once it lapsed.
+// The prompt cache as a draining meter: "42m" left, or a red "cold · new
+// session?" once it lapsed.
 // Null before the first response, or with prompt caching off.
 export function cacheMeter(leftMs: number | null, ttlMs: number | null): Meter | null {
   if (leftMs === null || ttlMs === null) {
@@ -43,7 +50,7 @@ export function cacheMeter(leftMs: number | null, ttlMs: number | null): Meter |
   }
 
   if (leftMs === 0) {
-    return { name: 'cache', percent: 0, text: 'cold', color: '#f87171' }
+    return { name: 'cache', percent: 0, text: 'cold · new session?', color: '#f87171', isAlert: true }
   }
 
   const fraction = leftMs / ttlMs
@@ -88,7 +95,7 @@ async function alertIfHigh($: EngineInterface, windows: Limit[]) {
   const fresh = windows.filter(w => w.percentUsed >= ALERT_AT && !alerted.includes(`${w.kind}@${w.resetsAt}`))
 
   for (const w of fresh) {
-    $.ui.toast(`${LONG[w.kind] ?? w.kind} limit at ${Math.round(w.percentUsed)}%${resetsIn(w.resetsAt, now)}`, { timeoutMs: 8000 })
+    $.ui.toast(`${LONG[w.kind] ?? w.kind} limit at ${Math.round(w.percentUsed)}%${resetsIn(w.resetsAt, now)}`, { timeoutMs: TOAST_MS })
   }
 
   if (fresh.length > 0) {
@@ -145,9 +152,33 @@ async function tickCache($: EngineInterface) {
     cacheTimer = null
 
     if ((await read($, cacheColdToasted)) !== at) {
-      $.ui.toast('Prompt cache expired: your next message re-reads the whole conversation at full price. For a new task, start a new session.', { timeoutMs: 10_000 })
+      $.ui.toast('Prompt cache expired: your next message re-reads the whole conversation at full price. For a new task, start a new session.', { timeoutMs: TOAST_MS })
       await update($, cacheColdToasted, () => at)
     }
+  }
+}
+
+type CacheRecord = { at: number; ttl: number | null }
+
+async function saveCache($: EngineInterface, record: CacheRecord) {
+  const id = await $.session.id()
+  const saved = ((await $.store.get(CACHE_STORE_KEY)) ?? {}) as Record<string, CacheRecord>
+  const kept = Object.entries(saved).filter(([key]) => key !== id).slice(-(CACHE_STORE_MAX - 1))
+  await $.store.set(CACHE_STORE_KEY, Object.fromEntries([...kept, [id, record]]))
+}
+
+// After a restart or resume, picks the cache timestamp back up from $.store.
+async function loadCache($: EngineInterface) {
+  if ((await read($, cacheAt)) !== null) {
+    return
+  }
+
+  const saved = ((await $.store.get(CACHE_STORE_KEY)) ?? {}) as Record<string, CacheRecord>
+  const record = saved[await $.session.id()]
+
+  if (record !== undefined) {
+    await update($, cacheAt, () => record.at)
+    await update($, cacheTtlMs, () => record.ttl)
   }
 }
 
@@ -166,6 +197,7 @@ export function registerUsage(on: On) {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
     await store($, await $.session.usage())
+    await loadCache($)
     await tickCache($)
 
     return result
@@ -189,6 +221,7 @@ export function registerUsage(on: On) {
       const ttl = await cacheTtl($, e.rateLimits.map(w => ({ ...w })))
       await update($, cacheAt, () => now)
       await update($, cacheTtlMs, () => ttl)
+      await saveCache($, { at: now, ttl })
       await tickCache($)
     }
 
