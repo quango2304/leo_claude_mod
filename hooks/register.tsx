@@ -4,7 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Limit, Percent, Usd } from '../types'
 import { activeLabel, agentsLabel, registerActivity } from './features/activity'
 import { cacheMeter, costColor, costLabel, registerUsage, usageMeters } from './features/usage'
-import { meterSize, meterText, svgMeter, textMeter } from './meters'
+import { type Meter, meterSize, meterText, svgMeter, textMeter } from './meters'
 
 // The line reads each feature's value through its own atom on the same
 // state key: the engine only follows $ and state reads within one file.
@@ -19,16 +19,31 @@ const cacheTtlMs = atom({ plugin: 'leo-mods', key: 'cacheTtlMs' } as const, null
 // What the line shows: activity (active time, agents) on the left; meters
 // (cache, ctx, 5h, 7d) and plain labels (cost) on the right.
 async function readLine($: EngineInterface) {
-  const activity = [activeLabel(await read($, activeMs)), agentsLabel(await read($, runningAgents))].filter(
-    l => l !== null,
-  )
+  const active = await read($, activeMs)
+  const activity = [activeLabel(active), agentsLabel(await read($, runningAgents))].filter(l => l !== null)
   const cache = cacheMeter(await read($, cacheLeftMs), await read($, cacheTtlMs))
   const meters = [...(cache === null ? [] : [cache]), ...usageMeters(await read($, contextPercent), await read($, limits))]
   const cost = await read($, costUsd)
+
+  // Before the first response there's no context reading and the cost is $0
+  // (never absent in the CLI).
+  if ((await read($, contextPercent)) === null && (cost ?? 0) === 0 && active === 0) {
+    return { activity, meters: PLACEHOLDER_METERS, labels: [{ text: costLabel(0), color: costColor(0) }], isEmpty: false }
+  }
+
   const labels = cost === null ? [] : [{ text: costLabel(cost), color: costColor(cost) }]
 
   return { activity, meters, labels, isEmpty: activity.length === 0 && meters.length === 0 && labels.length === 0 }
 }
+
+// Until the first response (a new session, before its first turn) the line
+// keeps its shape: empty bars, zeroed numbers and a $0.00 cost.
+const PLACEHOLDER_METERS: Meter[] = [
+  { name: 'cache', percent: 0, text: '00m', color: '#34d399' },
+  { name: 'ctx', percent: 0 },
+  { name: '5h', percent: 0 },
+  { name: '7d', percent: 0 },
+]
 
 // To add a feature: write hooks/features/<name>.ts exporting register<Name>(on)
 // and a formatter; declare its atom here and add its meter or label in readLine.

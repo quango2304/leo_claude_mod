@@ -41,7 +41,7 @@ export function usageMeters(context: Percent, windows: Limit[]): Meter[] {
   return [...meters, ...windows.map(w => ({ name: SHORT[w.kind] ?? w.kind, percent: w.percentUsed }))]
 }
 
-// The prompt cache as a draining meter: "42m" left, or a red "cold · new
+// The prompt cache as a draining meter: "42m" (or "07m") left, or a red "cold · new
 // session?" once it lapsed.
 // Null before the first response, or with prompt caching off.
 export function cacheMeter(leftMs: number | null, ttlMs: number | null): Meter | null {
@@ -57,7 +57,7 @@ export function cacheMeter(leftMs: number | null, ttlMs: number | null): Meter |
   const minutes = Math.ceil(leftMs / 60_000)
   const color = fraction > 0.4 ? '#34d399' : fraction > 0.15 ? '#fbbf24' : '#f87171'
 
-  return { name: 'cache', percent: fraction * 100, text: `${minutes}m`, color }
+  return { name: 'cache', percent: fraction * 100, text: `${String(minutes).padStart(2, '0')}m`, color }
 }
 
 // The cost's color: green under $50, amber under $100, red from $100.
@@ -69,9 +69,9 @@ export function costColor(total: number) {
   return total >= 50 ? '#fbbf24' : '#4ade80'
 }
 
-// "$0.1268" under a dollar, "$1.09" above.
+// "$0.00", "$1.09": always cents, so the line doesn't shift.
 export function costLabel(total: number) {
-  return total < 1 ? `$${total.toFixed(4)}` : `$${total.toFixed(2)}`
+  return `$${total.toFixed(2)}`
 }
 
 function resetsIn(resetsAt: string | undefined, now: number) {

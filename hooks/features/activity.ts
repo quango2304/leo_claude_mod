@@ -11,18 +11,9 @@ const POLL_MS = 2000
 
 let poller: Timer | null = null
 
-// "active 40s", "active 12m", "active 1h 05m"; null before the first turn ends.
+// "active 0m", "active 12m", "active 1h 05m".
 export function activeLabel(ms: number) {
-  if (ms === 0) {
-    return null
-  }
-
-  const seconds = Math.round(ms / 1000)
-  const minutes = Math.floor(seconds / 60)
-
-  if (minutes === 0) {
-    return `active ${seconds}s`
-  }
+  const minutes = Math.floor(ms / 60_000)
 
   return minutes < 60 ? `active ${minutes}m` : `active ${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
 }

@@ -29,8 +29,9 @@ function meterColor(name: string, percent: number) {
   return percent >= 50 ? WARN : (COLORS[name] ?? '#9ca3af')
 }
 
+// Two digits ("05%"), so the line doesn't shift as the numbers change.
 export function meterText(meter: Meter) {
-  return meter.text ?? `${Math.round(meter.percent)}%`
+  return meter.text ?? `${String(Math.round(meter.percent)).padStart(2, '0')}%`
 }
 
 export function svgMeter(meter: Meter) {
@@ -54,3 +55,4 @@ export function textMeter(percent: number) {
 }
 
 export const meterSize = { width: WIDTH, height: HEIGHT }
+

@@ -7,7 +7,7 @@ Leo's personal mods for Claude Code (terminal and the desktop app's Code tab), p
 One clean line of live session info. In the desktop app it sits above the prompt, with activity at the left and small bars at the right:
 
 ```
-active 12m · 2 agents     cache ▬▬▬▬▭ 42m   ctx ▬▬▬▭▭ 42%   5h ▬▭▭▭▭ 23%   7d ▬▭▭▭▭ 12%   $0.1268
+active 12m · 2 agents     cache ▬▬▬▬▭ 42m   ctx ▬▬▬▭▭ 42%   5h ▬▭▭▭▭ 23%   7d ▬▭▭▭▭ 12%   $0.13
 ```
 
 In the terminal it's one footer label, with text bars:
@@ -20,16 +20,16 @@ active 12m · 2 agents · cache ▰▰▰▰▱ 42m · ctx ▰▰▱▱▱ 42% �
 
 | Part | What it shows | File |
 | --- | --- | --- |
-| `active 12m` | Time Claude has spent working this session: the main conversation's turn durations added up (not time since the session opened). Counted from when the plugin loads, which is the session start in a new session. | `hooks/features/activity.ts` |
+| `active 12m` | Time Claude has spent working this session: the main conversation's turn durations added up (not time since the session opened), in whole minutes. Counted from when the plugin loads, which is the session start in a new session. | `hooks/features/activity.ts` |
 | `2 agents` | Subagents running right now; hidden when none are. | `hooks/features/activity.ts` |
 | `cache` | How long the prompt cache stays warm: a bar that drains (green, then amber under 40% left, red under 15%) and the minutes left, or a red `cold · new session?` once it expired. A toast also tells you when it expires: your next message then re-reads the whole conversation at full price, so for a new task a new session is cheaper. | `hooks/features/usage.ts` |
 | `ctx` | How full the context window is. Near 100%, the conversation gets compacted. | `hooks/features/usage.ts` |
 | `5h` / `7d` | How much of your subscription's 5-hour and 7-day usage limits you've used. Hidden off a subscription (API key). | `hooks/features/usage.ts` |
-| `$0.1268` | The session's total cost: green under $50, amber under $100, red from $100. | `hooks/features/usage.ts` |
+| `$0.13` | The session's total cost, in dollars and cents: green under $50, amber under $100, red from $100. | `hooks/features/usage.ts` |
 
 Each bar has its own color (ctx blue, 5h violet, 7d teal), then turns amber from 50% and red from 80% (`hooks/meters.ts`). When a usage limit passes **80%**, a toast pops up (for 30 seconds) once per window, e.g. "5-hour limit at 82%, resets in 1h 20m".
 
-Usage numbers are read when the session starts and updated after each turn.
+Usage numbers are read when the session starts and updated after each turn. Numbers keep a fixed width (`05%`, `07m`, `$0.00`) so the line doesn't shift; until the first response, a new session shows empty bars with `00m`, `00%`, `$0.00` and `active 0m`.
 
 **How the cache countdown works.** Each response from the main conversation restarts the prompt cache's timer, and the bar stays full while a turn runs. The TTL follows Claude Code's own rule: `CLAUDE_CODE_PROMPT_CACHE_TTL`, then the `promptCacheTtl` setting, then **1 hour** on a Claude subscription within its usage limits and **5 minutes** on an API key, Bedrock or Vertex. The countdown keeps running while the session sits idle (re-checked every 15 seconds against the clock, so it's right after the Mac wakes too), and the last-refresh time is saved per session, so a restarted or resumed session picks it back up. It's an estimate from the client side: the API doesn't report when an entry expires. Active time updates when each turn ends. The agent count refreshes when a subagent starts and when a turn ends, and every 2 seconds while any are running.
 
