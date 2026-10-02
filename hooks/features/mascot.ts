@@ -2,80 +2,87 @@ import { atom, update } from 'claude-code'
 import type { EngineInterface, On, Timer } from 'claude-code'
 
 import type { Mood } from '../../types'
-import { FRAMES } from '../mascot'
+import { FRAME_TICKS, FRAMES } from '../mascot'
 
 // What the dog at the desktop line's left is doing, from what the session is
 // doing. The mood and the frame within it are two atoms the line reads; the
-// facts behind them (a tool running, a question open, when the last key, the
-// last answer and the last failure were) stay here, and a timer lets the short
-// moods run out, steps the animation and puts her to sleep after a quiet spell.
+// facts behind them (a turn running, when the last key and the last answer
+// were) stay here, and a timer lets the short moods run out and steps the
+// animation.
 const mascotMood = atom({ plugin: 'leo-mods', key: 'mascotMood' } as const, 'idle' as Mood)
 const mascotFrame = atom({ plugin: 'leo-mods', key: 'mascotFrame' } as const, 0)
 
-const TICK_MS = 500
-const TYPING_MS = 3000
+// The timer ticks often, to read the draft and the mood, so a stop in typing
+// shows fast; each mood steps its picture every FRAME_TICKS of them.
+const TICK_MS = 200
+const TYPING_MS = 500
 const DONE_MS = 3000
-const ERROR_MS = 4000
-const SLEEP_MS = 5 * 60_000
+const HOLD_MS = 2000
 
-type Facts = { isWorking: boolean; tools: number; waits: number; keyAt: number; doneAt: number; errorAt: number; activeAt: number }
+type Facts = { isWorking: boolean; keyAt: number; doneAt: number }
 
-// The mood the facts add up to. She waits for you first (a question or a
-// permission is open), then a failure; then works (a tool is running) or
-// thinks (a turn runs with no tool); then typing, a finished turn, a long
-// quiet spell, else idle.
+// The mood the facts add up to. She listens while you type, even mid-turn;
+// then works while a turn runs, cheers for a moment when it ends with an
+// answer, else dozes.
 export function moodAt(facts: Facts, now: number): Mood {
-  if (facts.waits > 0) {
-    return 'waiting'
-  }
-
-  if (now - facts.errorAt < ERROR_MS) {
-    return 'error'
-  }
-
-  if (facts.tools > 0) {
-    return 'working'
-  }
-
-  if (facts.isWorking) {
-    return 'thinking'
-  }
-
   if (now - facts.keyAt < TYPING_MS) {
     return 'typing'
   }
 
-  if (now - facts.doneAt < DONE_MS) {
-    return 'done'
+  if (facts.isWorking) {
+    return 'working'
   }
 
-  return now - facts.activeAt >= SLEEP_MS ? 'sleeping' : 'idle'
+  return now - facts.doneAt < DONE_MS ? 'done' : 'idle'
+}
+
+// Every mood change swaps the picture, so a mood stays at least HOLD_MS before
+// another replaces it. Typing cuts in at once, and ends at once.
+export function holdMood(current: Mood, next: Mood, shownAt: number, now: number): Mood {
+  return next === 'typing' || current === 'typing' || now - shownAt >= HOLD_MS ? next : current
 }
 
 const NEVER = -Infinity
-const facts: Facts = { isWorking: false, tools: 0, waits: 0, keyAt: NEVER, doneAt: NEVER, errorAt: NEVER, activeAt: 0 }
-// Tool calls whose permission is being asked, by id, so a wait ends with its call.
-const asked = new Set<string>()
+const facts: Facts = { isWorking: false, keyAt: NEVER, doneAt: NEVER }
 let current: Mood = 'idle'
+let shownAt = 0
 let frame = 0
 let ticks = 0
 let timer: Timer | null = null
+
+// The draft as of the last tick. The desktop reports an edit late (prompt.edit
+// fires well after the keys), so each tick also reads the draft, and a change
+// to it is typing. Only the timer reads it: from inside a hook (an edit, a tool
+// check) the read can wait on that very hook.
+let draft = ''
+
+async function pollDraft($: EngineInterface) {
+  const { text } = await $.prompt.read()
+
+  if (text !== draft && text !== '') {
+    facts.keyAt = await $.clock.now()
+  }
+
+  draft = text
+}
 
 // One timer tick: recomputes the mood, steps the animation, and writes either
 // only when it changed, so the line (a plain image, swapped per frame) redraws
 // only when the picture does.
 async function settle($: EngineInterface) {
-  const next = moodAt(facts, await $.clock.now())
+  const now = await $.clock.now()
+  const next = holdMood(current, moodAt(facts, now), shownAt, now)
 
   if (next !== current) {
     current = next
+    shownAt = now
     ticks = 0
     await update($, mascotMood, () => next)
   } else {
     ticks += 1
   }
 
-  const nextFrame = ticks % FRAMES[next].length
+  const nextFrame = Math.floor(ticks / FRAME_TICKS[next]) % FRAMES[next].length
 
   if (nextFrame !== frame) {
     frame = nextFrame
@@ -85,29 +92,27 @@ async function settle($: EngineInterface) {
 
 // Starts the timer the first time one of her own hooks runs.
 function ensureTimer($: EngineInterface) {
-  timer ??= $.clock.every(TICK_MS, () => void settle($))
-}
-
-async function touch($: EngineInterface, change: Partial<Facts>) {
-  const now = await $.clock.now()
-  Object.assign(facts, { activeAt: now }, change)
-  ensureTimer($)
-  await settle($)
+  timer ??= $.clock.every(TICK_MS, () => {
+    void pollDraft($).catch(() => undefined)
+    void settle($)
+  })
 }
 
 // The events another feature already hooks (the engine takes one hook per
 // event per plugin, and `$` can't cross a file) record the fact here, plain,
 // and the timer above turns it into a mood.
-export function noteTurnStart(now: number) {
-  Object.assign(facts, { isWorking: true, activeAt: now })
+export function noteTurnStart() {
+  facts.isWorking = true
 }
 
-// Only the main conversation's turns count: a subagent's end isn't hers. A turn
-// that ends (or is interrupted) closes whatever tool or question was open.
+// Only the main conversation's turns count: a subagent's end isn't hers.
 export function noteTurnEnd(now: number, e: { agentId?: string; reason: string }) {
   if (e.agentId === undefined) {
-    Object.assign(facts, { isWorking: false, tools: 0, waits: 0, activeAt: now }, e.reason === 'error' ? { errorAt: now } : e.reason === 'answer' ? { doneAt: now } : {})
-    asked.clear()
+    facts.isWorking = false
+
+    if (e.reason === 'answer') {
+      facts.doneAt = now
+    }
   }
 }
 
@@ -123,57 +128,25 @@ export function registerMascot(on: On) {
   // isn't.
   on('prompt.edit', async ($, e, next) => {
     if (e.inputText !== '' || e.end > e.start) {
-      await touch($, { keyAt: await $.clock.now() })
+      facts.keyAt = await $.clock.now()
+      ensureTimer($)
     }
-
-    return next(e)
-  })
-
-  on('prompt.submit', async ($, e, next) => {
-    await touch($, { keyAt: NEVER })
 
     return next(e)
   })
 
   // Every row the conversation keeps (a prompt, a reply, a tool result) is a
-  // sign of life: it starts the timer, and wakes her.
+  // sign of life: it starts the timer.
   on('session.append', async ($, e, next) => {
-    facts.activeAt = await $.clock.now()
     ensureTimer($)
 
     return next(e)
   })
 
-  // A permission being asked for a real call: she waits until that call ends.
-  on('tool.check', async ($, e, next) => {
-    const verdict = await next(e)
+  on('prompt.submit', async ($, e, next) => {
+    facts.keyAt = NEVER
+    ensureTimer($)
 
-    if (e.tool_use_id !== undefined && verdict.decision === 'ask' && !asked.has(e.tool_use_id)) {
-      asked.add(e.tool_use_id)
-      await touch($, { waits: facts.waits + 1 })
-    }
-
-    return verdict
-  })
-
-  // A tool call: working while it runs (waiting, if it is the question tool
-  // itself or its permission is open), and a failure is an error.
-  on('tool.call', async ($, e, next) => {
-    const isQuestion = e.tool === 'AskUserQuestion'
-    await touch($, { tools: facts.tools + 1, ...(isQuestion ? { waits: facts.waits + 1 } : {}) })
-
-    try {
-      const ran = await next(e)
-
-      if (ran.deny === undefined && ran.isError === true) {
-        facts.errorAt = await $.clock.now()
-      }
-
-      return ran
-    } finally {
-      const wasAsked = asked.delete(e.tool_use_id)
-      const waits = facts.waits - (isQuestion ? 1 : 0) - (wasAsked ? 1 : 0)
-      await touch($, { tools: Math.max(0, facts.tools - 1), waits: Math.max(0, waits) })
-    }
+    return next(e)
   })
 }

@@ -12,7 +12,7 @@ export type Meter = { name: string; percent: number; text?: string; color?: stri
 
 // Every size below is a base size times SCALE: change SCALE to grow or shrink
 // the whole line at once.
-const SCALE = 0.8
+const SCALE = 0.95
 const px = (base: number) => Math.round(base * SCALE * 10) / 10
 
 // A desktop meter keeps its size, placeholder or not, so the line never moves:

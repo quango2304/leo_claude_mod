@@ -211,7 +211,7 @@ export function registerUsage(on: On) {
 
   on('turn.start', async ($, e, next) => {
     isTurnRunning = true
-    noteTurnStart(await $.clock.now())
+    noteTurnStart()
     await tickCache($)
 
     return next(e)

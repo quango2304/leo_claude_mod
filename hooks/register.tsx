@@ -28,7 +28,11 @@ const nowMs = atom({ plugin: 'leo-mods', key: 'nowMs' } as const, 0)
 async function readLine($: EngineInterface): Promise<{ summary: Summary; meters: Meter[] }> {
   const active = await read($, activeMs)
   const cache = cacheMeter(await read($, cacheLeftMs), await read($, cacheTtlMs))
-  const meters = [...(cache === null ? [] : [cache]), ...usageMeters(await read($, contextPercent), await read($, limits), await read($, nowMs))]
+  const shown = [...(cache === null ? [] : [cache]), ...usageMeters(await read($, contextPercent), await read($, limits), await read($, nowMs))]
+  // Until the first response some meters have no reading yet (the cache, the
+  // context, the rate limits): each keeps its placeholder, so none pops in
+  // later and the line holds its shape.
+  const meters = cache === null ? PLACEHOLDER_METERS.map(placeholder => shown.find(m => m.name === placeholder.name) ?? placeholder) : shown
   const cost = await read($, costUsd)
   const summary = {
     cost: cost === null ? '' : costLabel(cost),

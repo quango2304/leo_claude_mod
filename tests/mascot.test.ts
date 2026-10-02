@@ -1,25 +1,30 @@
 import { expect, test } from 'claude-code/testing'
 
-import { moodAt } from '../hooks/features/mascot'
+import { holdMood, moodAt } from '../hooks/features/mascot'
 import { FRAMES, svgMascot } from '../hooks/mascot'
 
-const quiet = { isWorking: false, tools: 0, waits: 0, keyAt: -Infinity, doneAt: -Infinity, errorAt: -Infinity, activeAt: 0 }
+const quiet = { isWorking: false, keyAt: -Infinity, doneAt: -Infinity }
 
-// Waiting on you outranks everything, then a failure, then a running tool,
-// then a thinking turn, then typing, then a finished turn; a long quiet spell
-// puts her to sleep, and the short moods run out.
+// Typing outranks everything (even mid-turn), then a running turn, then a
+// finished one; else she dozes. The short moods run out.
 test('the mood follows what the session is doing', () => {
   expect(moodAt(quiet, 1000)).toBe('idle')
   expect(moodAt({ ...quiet, keyAt: 900 }, 1000)).toBe('typing')
-  expect(moodAt({ ...quiet, keyAt: 900 }, 4000)).toBe('idle')
-  expect(moodAt({ ...quiet, keyAt: 900, isWorking: true }, 1000)).toBe('thinking')
-  expect(moodAt({ ...quiet, isWorking: true, tools: 1 }, 1000)).toBe('working')
-  expect(moodAt({ ...quiet, isWorking: true, tools: 1, waits: 1 }, 1000)).toBe('waiting')
+  expect(moodAt({ ...quiet, keyAt: 900 }, 1700)).toBe('idle')
+  expect(moodAt({ ...quiet, keyAt: 900, isWorking: true }, 1000)).toBe('typing')
+  expect(moodAt({ ...quiet, isWorking: true }, 1000)).toBe('working')
   expect(moodAt({ ...quiet, doneAt: 900 }, 1000)).toBe('done')
   expect(moodAt({ ...quiet, doneAt: 900 }, 4000)).toBe('idle')
-  expect(moodAt({ ...quiet, isWorking: true, tools: 1, errorAt: 900 }, 1000)).toBe('error')
-  expect(moodAt({ ...quiet, waits: 1, errorAt: 900 }, 1000)).toBe('waiting')
-  expect(moodAt(quiet, 5 * 60_000)).toBe('sleeping')
+  expect(moodAt({ ...quiet, isWorking: true, doneAt: 900 }, 1000)).toBe('working')
+})
+
+// A mood stays 2 seconds before another replaces it, so the picture doesn't
+// flash; typing doesn't wait, in or out.
+test('a mood is held before it changes', () => {
+  expect(holdMood('working', 'done', 1000, 1500)).toBe('working')
+  expect(holdMood('working', 'done', 1000, 3000)).toBe('done')
+  expect(holdMood('working', 'typing', 1000, 1100)).toBe('typing')
+  expect(holdMood('typing', 'idle', 1000, 1100)).toBe('idle')
 })
 
 test('every frame of every mood draws a transparent pixel svg', () => {
